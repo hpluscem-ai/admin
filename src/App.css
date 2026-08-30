@@ -195,26 +195,22 @@
 
 .data-view__table-scroll {
   overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.data-view__table-scroll::-webkit-scrollbar {
+  display: none;
 }
 
 .data-table {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  width: 100%;
-  min-width: 1600px;
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: auto;
   color: var(--color-black);
   font-size: 14px;
   line-height: 20px;
-}
-
-.data-table thead,
-.data-table tbody {
-  display: table;
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  table-layout: fixed;
 }
 
 .data-table th,
@@ -223,6 +219,11 @@
   padding: 0 16px;
   text-align: center;
   white-space: nowrap;
+}
+
+.data-table tr.data-table__spacer td {
+  height: 20px;
+  padding: 0;
 }
 
 .data-table th {
@@ -236,6 +237,12 @@
 
 .data-table th:last-child {
   border-radius: 0 16px 16px 0;
+}
+
+.data-table td.data-table__empty {
+  height: 156px;
+  color: var(--color-gray-700);
+  text-align: center;
 }
 
 .text-button {
@@ -257,7 +264,6 @@
 }
 
 .approval-status {
-  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -265,7 +271,7 @@
 }
 
 .approval-status select {
-  padding: 0 24px 0 0;
+  padding: 0;
   border: 0;
   outline: 0;
   appearance: none;
@@ -275,14 +281,19 @@
 }
 
 .approval-status__icon {
-  position: absolute;
-  right: 0;
+  display: inline-flex;
+  flex: 0 0 24px;
+  align-items: center;
+  justify-content: center;
   width: 24px;
   height: 24px;
-  padding: 8.7px 6px;
-  box-sizing: border-box;
-  object-fit: contain;
   pointer-events: none;
+}
+
+.approval-status__icon img {
+  display: block;
+  width: 12px;
+  height: auto;
 }
 
 .table-actions {

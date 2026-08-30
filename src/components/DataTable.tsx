@@ -8,11 +8,12 @@ export type DataTableColumn<Row> = {
 
 type DataTableProps<Row> = {
   columns: readonly DataTableColumn<Row>[]
+  emptyMessage?: string
   getRowKey: (row: Row) => string
   rows: readonly Row[]
 }
 
-export function DataTable<Row>({ columns, getRowKey, rows }: DataTableProps<Row>) {
+export function DataTable<Row>({ columns, emptyMessage, getRowKey, rows }: DataTableProps<Row>) {
   return (
     <div className="data-view__table-scroll">
       <table className="data-table">
@@ -26,7 +27,14 @@ export function DataTable<Row>({ columns, getRowKey, rows }: DataTableProps<Row>
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
+          <tr className="data-table__spacer" aria-hidden="true">
+            <td colSpan={columns.length} />
+          </tr>
+          {rows.length === 0 && emptyMessage ? (
+            <tr>
+              <td className="data-table__empty" colSpan={columns.length}>{emptyMessage}</td>
+            </tr>
+          ) : rows.map((row) => (
             <tr key={getRowKey(row)}>
               {columns.map((column) => (
                 <td key={column.key}>{column.render(row)}</td>

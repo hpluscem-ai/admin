@@ -3,13 +3,13 @@ import { DataPageHeader } from '../components/DataPageHeader'
 import {
   AffiliationFilter,
   DateRangeFilter,
-  type DateRange,
 } from '../components/PageFilters'
 import {
   createDashboardMockData,
   type DashboardData,
   type DashboardReceipt,
 } from '../data/dashboardMockData'
+import { getDefaultDateRange, type DateRange } from '../utils/dateRange'
 
 const numberFormatter = new Intl.NumberFormat('ko-KR')
 const weekdays = ['일', '월', '화', '수', '목', '금', '토'] as const
@@ -48,23 +48,6 @@ function toDateValue(date: Date) {
   const day = String(date.getDate()).padStart(2, '0')
 
   return `${year}-${month}-${day}`
-}
-
-function subtractOneMonth(date: Date) {
-  const result = new Date(date.getFullYear(), date.getMonth() - 1, 1)
-  const lastDay = new Date(date.getFullYear(), date.getMonth(), 0).getDate()
-  result.setDate(Math.min(date.getDate(), lastDay))
-
-  return result
-}
-
-function getDefaultDateRange(): DateRange {
-  const endDate = new Date()
-
-  return {
-    start: toDateValue(subtractOneMonth(endDate)),
-    end: toDateValue(endDate),
-  }
 }
 
 function parseDateValue(value: string) {

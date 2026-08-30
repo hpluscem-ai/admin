@@ -22,7 +22,9 @@ export function StatusSelect({ label, status }: StatusSelectProps) {
         <option value="대기">대기</option>
         <option value="반려">반려</option>
       </select>
-      <img className="approval-status__icon" src={chevronDownIcon} alt="" />
+      <span className="approval-status__icon" aria-hidden="true">
+        <img src={chevronDownIcon} alt="" />
+      </span>
     </span>
   )
 }

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import calendarIcon from '../assets/calendar.svg'
 import chevronDownIcon from '../assets/chevron-down.svg'
 import searchIcon from '../assets/search.svg'
+import { getDefaultDateRange, type DateRange } from '../utils/dateRange'
 
 type SearchFilterProps = {
   placeholder?: string
@@ -17,11 +18,6 @@ export function SearchFilter({
       <input className="filter-control__input" type="search" placeholder={placeholder} />
     </label>
   )
-}
-
-export type DateRange = {
-  end: string
-  start: string
 }
 
 type DateRangeFilterProps = Partial<DateRange> & {
@@ -59,10 +55,7 @@ function DatePickerField({ label, max, min, onChange, value }: DatePickerFieldPr
 }
 
 export function DateRangeFilter({ start, end, onChange }: DateRangeFilterProps) {
-  const [internalRange, setInternalRange] = useState<DateRange>(() => ({
-    start: start ?? '2026-08-01',
-    end: end ?? '2026-08-10',
-  }))
+  const [internalRange, setInternalRange] = useState<DateRange>(getDefaultDateRange)
   const isControlled = start !== undefined && end !== undefined
   const range = isControlled ? { start, end } : internalRange
 
