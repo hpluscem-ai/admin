@@ -5,17 +5,29 @@ import searchIcon from '../assets/search.svg'
 import { getDefaultDateRange, type DateRange } from '../utils/dateRange'
 
 type SearchFilterProps = {
+  label?: string
+  onChange?: (query: string) => void
   placeholder?: string
+  value?: string
 }
 
 export function SearchFilter({
+  label = '기사 검색',
+  onChange,
   placeholder = '기사님 성함으로 검색해주세요.',
+  value,
 }: SearchFilterProps) {
   return (
     <label className="filter-control">
-      <span className="sr-only">기사 검색</span>
+      <span className="sr-only">{label}</span>
       <img className="filter-control__icon filter-control__icon--search" src={searchIcon} alt="" />
-      <input className="filter-control__input" type="search" placeholder={placeholder} />
+      <input
+        className="filter-control__input"
+        onChange={(event) => onChange?.(event.target.value)}
+        placeholder={placeholder}
+        type="search"
+        value={value}
+      />
     </label>
   )
 }

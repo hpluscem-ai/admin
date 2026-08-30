@@ -317,8 +317,11 @@
 }
 
 .floating-action {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 1;
   display: inline-flex;
-  align-self: flex-end;
   align-items: center;
   gap: 8px;
   padding: 10px 16px;
