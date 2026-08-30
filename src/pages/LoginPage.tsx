@@ -1,0 +1,177 @@
+import { useState, type FormEvent } from 'react'
+import logo from '../assets/hplus-eco-logo.png'
+import { Footer } from '../components/Footer'
+import { PrimaryButton, TextField } from '../components/FormControls'
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const PASSWORD_PATTERN = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z\d\s]).{8,}$/
+
+const AUTHENTICATION_ERROR = '이메일 또는 비밀번호가 올바르지 않습니다.'
+const SERVER_INTEGRATION_PENDING_ERROR = '로그인 서버 연동이 필요합니다.'
+
+export type AdminLoginCredentials = {
+  email: string
+  password: string
+}
+
+export type AdminLoginResult = { ok: true } | { ok: false }
+
+type LoginPageProps = {
+  authenticate?: (credentials: AdminLoginCredentials) => Promise<AdminLoginResult>
+}
+
+type FieldErrors = {
+  email?: string
+  password?: string
+}
+
+function validateEmail(value: string) {
+  if (!value.trim()) return '이메일을 입력해주세요.'
+  if (!EMAIL_PATTERN.test(value.trim())) return '올바른 이메일 형식을 입력해주세요.'
+  return undefined
+}
+
+function validatePassword(value: string) {
+  if (!value) return '비밀번호를 입력해주세요.'
+  if (!PASSWORD_PATTERN.test(value)) {
+    return '영문, 숫자, 특수문자를 포함하여 8자 이상 입력해주세요.'
+  }
+  return undefined
+}
+
+export function LoginPage({ authenticate }: LoginPageProps) {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
+  const [submitError, setSubmitError] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const canSubmit = Boolean(email.trim() && password) && !isSubmitting
+
+  function handleEmailChange(value: string) {
+    setEmail(value)
+    setFieldErrors((current) => (current.email ? { ...current, email: undefined } : current))
+    setSubmitError('')
+  }
+
+  function handlePasswordChange(value: string) {
+    setPassword(value)
+    setFieldErrors((current) => (current.password ? { ...current, password: undefined } : current))
+    setSubmitError('')
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    const nextErrors = {
+      email: validateEmail(email),
+      password: validatePassword(password),
+    }
+    setFieldErrors(nextErrors)
+    setSubmitError('')
+
+    if (nextErrors.email || nextErrors.password) return
+
+    if (!authenticate) {
+      setSubmitError(SERVER_INTEGRATION_PENDING_ERROR)
+      return
+    }
+
+    setIsSubmitting(true)
+
+    try {
+      const result = await authenticate({ email: email.trim(), password })
+
+      if (!result.ok) {
+        setSubmitError(AUTHENTICATION_ERROR)
+        return
+      }
+
+      window.location.hash = '/dashboard'
+    } catch {
+      setSubmitError('로그인 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="login-page">
+      <main className="login-content">
+        <div className="login-panel">
+          <div className="login-brand">
+            <img src={logo} alt="H-Plus Eco" />
+            <p>에이치플러스에코 관리자 로그인</p>
+          </div>
+          <form className="login-form" onSubmit={handleSubmit} noValidate>
+            <div className="form-fields">
+              <div className="form-control">
+                <label className="sr-only" htmlFor="admin-email">
+                  이메일
+                </label>
+                <TextField
+                  id="admin-email"
+                  type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  placeholder="이메일을 입력해주세요."
+                  value={email}
+                  required
+                  aria-invalid={Boolean(fieldErrors.email)}
+                  aria-describedby={fieldErrors.email ? 'admin-email-error' : undefined}
+                  onChange={(event) => handleEmailChange(event.target.value)}
+                  onBlur={() =>
+                    setFieldErrors((current) => ({ ...current, email: validateEmail(email) }))
+                  }
+                />
+                {fieldErrors.email ? (
+                  <p className="form-field-error" id="admin-email-error" role="alert">
+                    {fieldErrors.email}
+                  </p>
+                ) : null}
+              </div>
+              <div className="form-control">
+                <label className="sr-only" htmlFor="admin-password">
+                  비밀번호
+                </label>
+                <TextField
+                  id="admin-password"
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder="비밀번호를 입력해주세요."
+                  value={password}
+                  required
+                  aria-invalid={Boolean(fieldErrors.password)}
+                  aria-describedby={fieldErrors.password ? 'admin-password-error' : undefined}
+                  onChange={(event) => handlePasswordChange(event.target.value)}
+                  onBlur={() =>
+                    setFieldErrors((current) => ({
+                      ...current,
+                      password: validatePassword(password),
+                    }))
+                  }
+                />
+                {fieldErrors.password ? (
+                  <p className="form-field-error" id="admin-password-error" role="alert">
+                    {fieldErrors.password}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+            <PrimaryButton type="submit" disabled={!canSubmit}>
+              {isSubmitting ? '로그인 중...' : '로그인'}
+            </PrimaryButton>
+            {submitError ? (
+              <p className="login-form__error" role="alert">
+                {submitError}
+              </p>
+            ) : null}
+          </form>
+        </div>
+      </main>
+      <Footer />
+    </div>
+  )
+}
