@@ -1,15 +1,5 @@
 import { InfrastructureForm, type InfrastructureValues } from '../components/InfrastructureForm'
-
-const values: InfrastructureValues = {
-  station: '역삼주유소',
-  pole: 'GS칼텍스',
-  model: 'HG500S',
-  capacity: '2,000L',
-  address: '서울 강남구 역삼로 134',
-  latitude: '37.5012',
-  longitude: '127.0365',
-  note: '셀프',
-}
+import { infrastructureEditMockValues } from '../data/infrastructureMockData'
 
 type InfrastructureFormPageProps = {
   actionLabel: string
@@ -32,5 +22,5 @@ export function InfrastructureCreatePage() {
 }
 
 export function InfrastructureEditPage() {
-  return <InfrastructureFormPage title="인프라 데이터 수정" titleId="infrastructure-edit-title" actionLabel="인프라 데이터 수정" initialValues={values} />
+  return <InfrastructureFormPage title="인프라 데이터 수정" titleId="infrastructure-edit-title" actionLabel="인프라 데이터 수정" initialValues={infrastructureEditMockValues} />
 }
