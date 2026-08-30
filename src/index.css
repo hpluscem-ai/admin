@@ -29,7 +29,6 @@ html {
 
 body {
   margin: 0;
-  min-width: 320px;
   min-height: 100vh;
   word-break: keep-all;
   overflow-wrap: break-word;

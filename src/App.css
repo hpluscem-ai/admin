@@ -1,6 +1,6 @@
 .admin-page,
 .login-page {
-  min-width: 1180px;
+  min-width: 1200px;
   min-height: 100vh;
   background: var(--color-white);
   color: var(--color-gray-800);
@@ -13,7 +13,7 @@
 
 .admin-layout {
   display: grid;
-  grid-template-columns: clamp(200px, 20vw, 280px) minmax(0, 1fr);
+  grid-template-columns: clamp(200px, 20vw, 240px) minmax(0, 1fr);
   min-height: 420px;
 }
 
@@ -655,7 +655,7 @@
 
 .dashboard-chart__plot {
   position: relative;
-  height: 304.8px;
+  height: 300px;
 }
 
 .dashboard-chart__grid {
