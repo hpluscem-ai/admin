@@ -15,6 +15,9 @@ const numberFormatter = new Intl.NumberFormat('ko-KR')
 const weekdays = ['일', '월', '화', '수', '목', '금', '토'] as const
 const chartWidth = 1000
 const chartHeight = 240
+const chartStrokeInset = 1
+const chartMinimumWidth = 760
+const maximumDateLabelCount = 12
 
 type SummaryCardProps = {
   helper?: string
@@ -193,20 +196,44 @@ function getChartData(
 }
 
 type ChartSeries = {
-  points: string
+  path: string
   singlePoint?: { x: number; y: number }
 }
 
+function getCurvedPath(coordinates: readonly { x: number; y: number }[]) {
+  if (coordinates.length === 0) return ''
+
+  return coordinates.slice(1).reduce((path, point, index) => {
+    const previousPoint = coordinates[index]
+    const controlX = (previousPoint.x + point.x) / 2
+
+    return `${path} C ${controlX},${previousPoint.y} ${controlX},${point.y} ${point.x},${point.y}`
+  }, `M ${coordinates[0].x},${coordinates[0].y}`)
+}
+
 function getChartSeries(values: readonly number[], yMaximum: number): ChartSeries {
+  const drawableHeight = chartHeight - chartStrokeInset * 2
   const coordinates = values.map((value, index) => ({
     x: values.length === 1 ? chartWidth / 2 : index / (values.length - 1) * chartWidth,
-    y: chartHeight - value / yMaximum * chartHeight,
+    y: chartHeight - chartStrokeInset - value / yMaximum * drawableHeight,
   }))
 
   return {
-    points: coordinates.map(({ x, y }) => `${x},${y}`).join(' '),
+    path: getCurvedPath(coordinates),
     singlePoint: coordinates.length === 1 ? coordinates[0] : undefined,
   }
+}
+
+function getVisibleDateIndexes(dateCount: number) {
+  const visibleCount = Math.min(dateCount, maximumDateLabelCount)
+
+  if (visibleCount <= 1) return new Set([0])
+
+  return new Set(
+    Array.from({ length: visibleCount }, (_, index) => (
+      Math.round(index * (dateCount - 1) / (visibleCount - 1))
+    )),
+  )
 }
 
 type MileageChartProps = {
@@ -220,7 +247,7 @@ function MileageChart({ affiliations, dateRange, receipts }: MileageChartProps) 
   const chart = getChartData(receipts, dateRange, selectedAffiliation)
   const commonSeries = getChartSeries(chart.commonValues, chart.yMaximum)
   const affiliationSeries = getChartSeries(chart.affiliationValues, chart.yMaximum)
-  const chartMinimumWidth = Math.max(760, chart.dates.length * 44)
+  const visibleDateIndexes = getVisibleDateIndexes(chart.dates.length)
   const chartDescription = `${formatDate(dateRange.start)}부터 ${formatDate(dateRange.end)}까지 일별 마일리지 적립 추이`
 
   return (
@@ -261,34 +288,55 @@ function MileageChart({ affiliations, dateRange, receipts }: MileageChartProps) 
               preserveAspectRatio="none"
               viewBox={`0 0 ${chartWidth} ${chartHeight}`}
             >
-              <polyline className="dashboard-chart__series dashboard-chart__series--common" points={commonSeries.points} />
-              {commonSeries.singlePoint ? (
-                <circle
-                  className="dashboard-chart__point dashboard-chart__point--common"
-                  cx={commonSeries.singlePoint.x}
-                  cy={commonSeries.singlePoint.y}
-                  r="4"
-                />
-              ) : null}
-              {selectedAffiliation ? (
-                <>
-                  <polyline className="dashboard-chart__series dashboard-chart__series--affiliation" points={affiliationSeries.points} />
-                  {affiliationSeries.singlePoint ? (
-                    <circle
-                      className="dashboard-chart__point dashboard-chart__point--affiliation"
-                      cx={affiliationSeries.singlePoint.x}
-                      cy={affiliationSeries.singlePoint.y}
-                      r="4"
-                    />
-                  ) : null}
-                </>
-              ) : null}
+              <defs>
+                <linearGradient id="mileage-common-gradient" x1="0%" x2="100%" y1="0%" y2="0%">
+                  <stop offset="0%" stopColor="var(--color-brand)" stopOpacity="0.2" />
+                  <stop offset="50%" stopColor="var(--color-brand)" />
+                  <stop offset="100%" stopColor="var(--color-brand)" stopOpacity="0.2" />
+                </linearGradient>
+                <clipPath id="mileage-chart-clip">
+                  <rect
+                    height={chartHeight + 20}
+                    width={chartWidth + 40}
+                    x="-20"
+                    y="-20"
+                  />
+                </clipPath>
+              </defs>
+              <g clipPath="url(#mileage-chart-clip)">
+                <path className="dashboard-chart__series dashboard-chart__series--common" d={commonSeries.path} />
+                {commonSeries.singlePoint ? (
+                  <circle
+                    className="dashboard-chart__point dashboard-chart__point--common"
+                    cx={commonSeries.singlePoint.x}
+                    cy={commonSeries.singlePoint.y}
+                    r="4"
+                  />
+                ) : null}
+                {selectedAffiliation ? (
+                  <>
+                    <path className="dashboard-chart__series dashboard-chart__series--affiliation" d={affiliationSeries.path} />
+                    {affiliationSeries.singlePoint ? (
+                      <circle
+                        className="dashboard-chart__point dashboard-chart__point--affiliation"
+                        cx={affiliationSeries.singlePoint.x}
+                        cy={affiliationSeries.singlePoint.y}
+                        r="4"
+                      />
+                    ) : null}
+                  </>
+                ) : null}
+              </g>
             </svg>
             <div
               className="dashboard-chart__dates"
-              style={{ gridTemplateColumns: `repeat(${chart.dates.length}, minmax(40px, 1fr))` }}
+              style={{ gridTemplateColumns: `repeat(${chart.dates.length}, minmax(0, 1fr))` }}
             >
-              {chart.dates.map((date) => <span key={date}>{formatShortDate(date)}</span>)}
+              {chart.dates.map((date, index) => (
+                <span key={date}>
+                  {visibleDateIndexes.has(index) ? formatShortDate(date) : ''}
+                </span>
+              ))}
             </div>
           </div>
         </div>

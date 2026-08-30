@@ -32,6 +32,32 @@ function formatDate(date: string) {
   return date.split('-').join('. ')
 }
 
+type DatePickerFieldProps = {
+  label: string
+  max?: string
+  min?: string
+  onChange: (value: string) => void
+  value: string
+}
+
+function DatePickerField({ label, max, min, onChange, value }: DatePickerFieldProps) {
+  return (
+    <label className="date-filter">
+      <img className="filter-control__icon" src={calendarIcon} alt="" />
+      <span aria-hidden="true">{formatDate(value)}</span>
+      <input
+        aria-label={label}
+        className="date-filter__picker"
+        max={max}
+        min={min}
+        onChange={(event) => onChange(event.target.value)}
+        type="date"
+        value={value}
+      />
+    </label>
+  )
+}
+
 export function DateRangeFilter({ start, end, onChange }: DateRangeFilterProps) {
   const [internalRange, setInternalRange] = useState<DateRange>(() => ({
     start: start ?? '2026-08-01',
@@ -65,31 +91,19 @@ export function DateRangeFilter({ start, end, onChange }: DateRangeFilterProps) 
 
   return (
     <div className="date-range-filter" role="group" aria-label="조회 기간">
-      <label className="date-filter">
-        <img className="filter-control__icon" src={calendarIcon} alt="" />
-        <span aria-hidden="true">{formatDate(range.start)}</span>
-        <input
-          aria-label="조회 시작일"
-          className="date-filter__picker"
-          max={range.end}
-          onChange={(event) => handleStartChange(event.target.value)}
-          type="date"
-          value={range.start}
-        />
-      </label>
+      <DatePickerField
+        label="조회 시작일"
+        max={range.end}
+        onChange={handleStartChange}
+        value={range.start}
+      />
       <span aria-hidden="true">~</span>
-      <label className="date-filter">
-        <img className="filter-control__icon" src={calendarIcon} alt="" />
-        <span aria-hidden="true">{formatDate(range.end)}</span>
-        <input
-          aria-label="조회 종료일"
-          className="date-filter__picker"
-          min={range.start}
-          onChange={(event) => handleEndChange(event.target.value)}
-          type="date"
-          value={range.end}
-        />
-      </label>
+      <DatePickerField
+        label="조회 종료일"
+        min={range.start}
+        onChange={handleEndChange}
+        value={range.end}
+      />
     </div>
   )
 }
