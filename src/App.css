@@ -458,10 +458,28 @@
 .form-fields {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 16px;
 }
 
 .form-control {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.form-field-label {
+  align-self: flex-start;
+  padding: 0 8px;
+  color: var(--color-black);
+  font-family: var(--font-family-suit);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.35px;
+  line-height: 20px;
+}
+
+.form-field-feedback {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -473,16 +491,19 @@
   height: 52px;
   padding: 0 16px;
   border: 0;
-  border-radius: 0;
+  border-radius: 26px;
   outline: 0;
   background: var(--color-gray-100);
   color: var(--color-gray-800);
+  font-family: var(--font-family-suit);
   font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.35px;
   line-height: 20px;
 }
 
 .form-field::placeholder {
-  color: var(--color-gray-800);
+  color: var(--color-gray-400);
   opacity: 1;
 }
 
@@ -535,10 +556,13 @@
   height: 52px;
   padding: 0 16px;
   border: 0;
-  border-radius: 0;
-  background: var(--color-gray-800);
+  border-radius: 26px;
+  background: var(--color-brand);
   color: var(--color-white);
+  font-family: var(--font-family-suit);
   font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.35px;
   line-height: 20px;
   cursor: pointer;
 }
@@ -552,7 +576,7 @@
   display: flex;
   justify-content: center;
   width: 100%;
-  padding: 144px 20px;
+  padding: 208px 20px;
 }
 
 .login-panel {
@@ -560,7 +584,7 @@
   flex-direction: column;
   align-items: center;
   gap: 40px;
-  width: 640px;
+  width: 600px;
 }
 
 .login-brand {
@@ -568,15 +592,22 @@
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  color: #040648;
+  color: var(--color-brand-text);
+  font-family: var(--font-family-suit);
   font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.35px;
   line-height: 20px;
 }
 
 .login-brand img {
-  width: 152px;
-  height: 40px;
+  width: 216px;
+  height: 32px;
   object-fit: contain;
+}
+
+.login-form .form-control {
+  gap: 8px;
 }
 
 .dashboard-overview {
@@ -875,10 +906,19 @@
   align-items: flex-start;
   gap: 16px;
   padding: 52px 20px;
-  background: var(--color-surface);
+  background: var(--color-white);
   box-shadow: inset 0 1px 0 var(--color-gray-200);
+  font-family: var(--font-family-footer);
   font-size: 12px;
+  font-weight: 500;
   line-height: 16px;
+}
+
+.site-footer__logo {
+  display: block;
+  width: 162px;
+  height: 24px;
+  object-fit: contain;
 }
 
 .site-footer__divider {

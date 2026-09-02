@@ -1,10 +1,10 @@
-import logo from '../assets/hplus-eco-logo.png'
+import logo from '../assets/hayan100-logo.png'
 
 /** 서비스와 사업자 정보를 표시하는 공용 푸터다. */
 export function Footer() {
   return (
     <footer className="site-footer">
-      <img className="brand-logo" src={logo} alt="H-Plus Eco" />
+      <img className="site-footer__logo" src={logo} alt="HAYAN100" />
       <hr className="site-footer__divider" />
       <div className="site-footer__information">
         <p>이용약관</p>

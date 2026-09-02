@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import logo from '../assets/hplus-eco-logo.png'
+import logo from '../assets/hayan100-logo.png'
 import { Footer } from '../components/Footer'
 import { PrimaryButton, TextField } from '../components/FormControls'
 
@@ -100,64 +100,68 @@ export function LoginPage({ authenticate }: LoginPageProps) {
       <main className="login-content">
         <div className="login-panel">
           <div className="login-brand">
-            <img src={logo} alt="H-Plus Eco" />
-            <p>에이치플러스에코 관리자 로그인</p>
+            <img src={logo} alt="HAYAN100" />
+            <p>하얀100 관리자 로그인</p>
           </div>
           <form className="login-form" onSubmit={handleSubmit} noValidate>
             <div className="form-fields">
               <div className="form-control">
-                <label className="sr-only" htmlFor="admin-email">
+                <label className="form-field-label" htmlFor="admin-email">
                   이메일
                 </label>
-                <TextField
-                  id="admin-email"
-                  type="email"
-                  inputMode="email"
-                  autoComplete="email"
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  placeholder="이메일을 입력해주세요."
-                  value={email}
-                  required
-                  aria-invalid={Boolean(fieldErrors.email)}
-                  aria-describedby={fieldErrors.email ? 'admin-email-error' : undefined}
-                  onChange={(event) => handleEmailChange(event.target.value)}
-                  onBlur={() =>
-                    setFieldErrors((current) => ({ ...current, email: validateEmail(email) }))
-                  }
-                />
-                {fieldErrors.email ? (
-                  <p className="form-field-error" id="admin-email-error" role="alert">
-                    {fieldErrors.email}
-                  </p>
-                ) : null}
+                <div className="form-field-feedback">
+                  <TextField
+                    id="admin-email"
+                    type="email"
+                    inputMode="email"
+                    autoComplete="email"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    placeholder="이메일을 입력해주세요."
+                    value={email}
+                    required
+                    aria-invalid={Boolean(fieldErrors.email)}
+                    aria-describedby={fieldErrors.email ? 'admin-email-error' : undefined}
+                    onChange={(event) => handleEmailChange(event.target.value)}
+                    onBlur={() =>
+                      setFieldErrors((current) => ({ ...current, email: validateEmail(email) }))
+                    }
+                  />
+                  {fieldErrors.email ? (
+                    <p className="form-field-error" id="admin-email-error" role="alert">
+                      {fieldErrors.email}
+                    </p>
+                  ) : null}
+                </div>
               </div>
               <div className="form-control">
-                <label className="sr-only" htmlFor="admin-password">
+                <label className="form-field-label" htmlFor="admin-password">
                   비밀번호
                 </label>
-                <TextField
-                  id="admin-password"
-                  type="password"
-                  autoComplete="current-password"
-                  placeholder="비밀번호를 입력해주세요."
-                  value={password}
-                  required
-                  aria-invalid={Boolean(fieldErrors.password)}
-                  aria-describedby={fieldErrors.password ? 'admin-password-error' : undefined}
-                  onChange={(event) => handlePasswordChange(event.target.value)}
-                  onBlur={() =>
-                    setFieldErrors((current) => ({
-                      ...current,
-                      password: validatePassword(password),
-                    }))
-                  }
-                />
-                {fieldErrors.password ? (
-                  <p className="form-field-error" id="admin-password-error" role="alert">
-                    {fieldErrors.password}
-                  </p>
-                ) : null}
+                <div className="form-field-feedback">
+                  <TextField
+                    id="admin-password"
+                    type="password"
+                    autoComplete="current-password"
+                    placeholder="비밀번호를 입력해주세요."
+                    value={password}
+                    required
+                    aria-invalid={Boolean(fieldErrors.password)}
+                    aria-describedby={fieldErrors.password ? 'admin-password-error' : undefined}
+                    onChange={(event) => handlePasswordChange(event.target.value)}
+                    onBlur={() =>
+                      setFieldErrors((current) => ({
+                        ...current,
+                        password: validatePassword(password),
+                      }))
+                    }
+                  />
+                  {fieldErrors.password ? (
+                    <p className="form-field-error" id="admin-password-error" role="alert">
+                      {fieldErrors.password}
+                    </p>
+                  ) : null}
+                </div>
               </div>
             </div>
             <PrimaryButton type="submit" disabled={!canSubmit}>
