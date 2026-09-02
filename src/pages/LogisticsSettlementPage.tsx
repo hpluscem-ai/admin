@@ -85,14 +85,14 @@ function getColumns(
         <span className="table-actions">
           <a
             aria-label={`${row.businessName} 수정`}
-            className="table-action"
+            className="table-action table-action--brand"
             href={`#/settlements/edit/${encodeURIComponent(row.id)}`}
           >
             수정
           </a>
           <button
             aria-label={`${row.businessName} 삭제`}
-            className="table-action"
+            className="table-action table-action--danger"
             onClick={() => onDelete(row)}
             type="button"
           >
