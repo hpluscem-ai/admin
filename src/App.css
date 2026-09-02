@@ -213,6 +213,12 @@
   line-height: 20px;
 }
 
+.receipt-data-page .data-table {
+  width: 100%;
+  min-width: 1598px;
+  table-layout: fixed;
+}
+
 .data-table th,
 .data-table td {
   height: 52px;
