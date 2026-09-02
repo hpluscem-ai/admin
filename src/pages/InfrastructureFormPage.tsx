@@ -1,5 +1,4 @@
 import { InfrastructureForm, type InfrastructureValues } from '../components/InfrastructureForm'
-import { infrastructureEditMockValues } from '../data/infrastructureMockData'
 
 type InfrastructureFormPageProps = {
   actionLabel: string
@@ -21,6 +20,10 @@ export function InfrastructureCreatePage() {
   return <InfrastructureFormPage title="신규 인프라 데이터 등록" titleId="infrastructure-create-title" actionLabel="인프라 데이터 등록" />
 }
 
-export function InfrastructureEditPage() {
-  return <InfrastructureFormPage title="인프라 데이터 수정" titleId="infrastructure-edit-title" actionLabel="인프라 데이터 수정" initialValues={infrastructureEditMockValues} />
+type InfrastructureEditPageProps = {
+  initialValues: InfrastructureValues
+}
+
+export function InfrastructureEditPage({ initialValues }: InfrastructureEditPageProps) {
+  return <InfrastructureFormPage title="인프라 데이터 수정" titleId="infrastructure-edit-title" actionLabel="인프라 데이터 수정" initialValues={initialValues} />
 }

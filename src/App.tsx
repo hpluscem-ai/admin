@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import './App.css'
 import { AdminLayout } from './components/AdminLayout'
+import { getInfrastructureMockDataById } from './data/infrastructureMockData'
 import { getLogisticsSettlementMockDataById } from './data/logisticsSettlementMockData'
 import { DashboardPage } from './pages/DashboardPage'
 import { DriverDataPage } from './pages/DriverDataPage'
@@ -16,12 +17,12 @@ const routes = {
   '/drivers': { activeMenu: '소속 기사 데이터 목록', Page: DriverDataPage },
   '/infrastructure': { activeMenu: '인프라 데이터 목록', Page: InfrastructureDataPage },
   '/infrastructure/new': { activeMenu: '인프라 데이터 목록', Page: InfrastructureCreatePage },
-  '/infrastructure/edit': { activeMenu: '인프라 데이터 목록', Page: InfrastructureEditPage },
   '/receipts': { activeMenu: '영수 데이터 목록', Page: ReceiptDataPage },
   '/settlements': { activeMenu: '물류사 정산 관리', Page: LogisticsSettlementPage },
   '/settlements/new': { activeMenu: '물류사 정산 관리', Page: LogisticsCreatePage },
 } as const
 
+const infrastructureEditRoutePrefix = '/infrastructure/edit/'
 const logisticsEditRoutePrefix = '/settlements/edit/'
 
 function subscribeToRoute(callback: () => void) {
@@ -33,10 +34,10 @@ function getRoute() {
   return window.location.hash.slice(1)
 }
 
-function getLogisticsEditId(path: string) {
-  if (!path.startsWith(logisticsEditRoutePrefix)) return undefined
+function getRouteId(path: string, routePrefix: string) {
+  if (!path.startsWith(routePrefix)) return undefined
 
-  const encodedId = path.slice(logisticsEditRoutePrefix.length)
+  const encodedId = path.slice(routePrefix.length)
 
   if (!encodedId) return ''
 
@@ -52,7 +53,23 @@ function App() {
 
   if (!path || path === '/login') return <LoginPage />
 
-  const logisticsEditId = getLogisticsEditId(path)
+  const infrastructureEditId = getRouteId(path, infrastructureEditRoutePrefix)
+
+  if (infrastructureEditId !== undefined) {
+    const initialValues = getInfrastructureMockDataById(infrastructureEditId)
+
+    return (
+      <AdminLayout activeMenu="인프라 데이터 목록">
+        {initialValues ? (
+          <InfrastructureEditPage key={infrastructureEditId} initialValues={initialValues} />
+        ) : (
+          <InfrastructureDataPage />
+        )}
+      </AdminLayout>
+    )
+  }
+
+  const logisticsEditId = getRouteId(path, logisticsEditRoutePrefix)
 
   if (logisticsEditId !== undefined) {
     const initialValues = getLogisticsSettlementMockDataById(logisticsEditId)

@@ -11,13 +11,7 @@ export type InfrastructureData = {
   station: string
 }
 
-type InfrastructureEditableValues = Omit<InfrastructureData, 'id' | 'registeredAt'>
-
-/**
- * 서버 인프라 상세 API가 준비되기 전 수정 화면에서만 사용하는 초기값이다.
- * 연동 시 InfrastructureFormPage의 import와 이 상수만 제거하면 된다.
- */
-export const infrastructureEditMockValues = {
+const yeoksamInfrastructureSeed = {
   station: '역삼주유소',
   pole: 'GS칼텍스',
   model: 'HG500S',
@@ -26,11 +20,11 @@ export const infrastructureEditMockValues = {
   latitude: '37.5012',
   longitude: '127.0365',
   note: '셀프',
-} as const satisfies InfrastructureEditableValues
+} as const satisfies Omit<InfrastructureData, 'id' | 'registeredAt'>
 
 const infrastructureSeeds = [
   { station: '고산주유소', pole: '알뜰', model: 'HG1000S', capacity: '1,500L', address: '전남 순천시 서면 사단4길 3', note: '셀프', latitude: '34.9507', longitude: '127.4872', daysAgo: 2 },
-  { ...infrastructureEditMockValues, daysAgo: 4 },
+  { ...yeoksamInfrastructureSeed, daysAgo: 4 },
   { station: '판교주유소', pole: 'SK에너지', model: 'HEUD-SELF-05', capacity: '2,500L', address: '경기 성남시 분당구 판교로 15', note: '-', latitude: '37.3947', longitude: '127.1112', daysAgo: 6 },
   { station: '마포주유소', pole: 'S-OIL', model: 'HG1000S', capacity: '1,800L', address: '서울 마포구 월드컵북로 32', note: '일반', latitude: '37.5565', longitude: '126.9082', daysAgo: 9 },
   { station: '인천주유소', pole: '현대오일뱅크', model: 'HEUD-SELF-05', capacity: '3,000L', address: '인천 남동구 소래로 88', note: '셀프', latitude: '37.3941', longitude: '126.7314', daysAgo: 12 },
@@ -74,4 +68,8 @@ export function createInfrastructureMockData(
       registeredAt: toDateValue(registeredAt),
     }
   })
+}
+
+export function getInfrastructureMockDataById(id: string) {
+  return createInfrastructureMockData().find((infrastructure) => infrastructure.id === id)
 }
