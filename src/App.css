@@ -6,6 +6,12 @@
   color: var(--color-gray-800);
 }
 
+.admin-layout {
+  font-family: var(--font-family-suit);
+  font-weight: 500;
+  letter-spacing: -0.35px;
+}
+
 .admin-page :focus,
 .login-page :focus {
   outline: none;
@@ -22,12 +28,12 @@
   flex-direction: column;
   gap: 32px;
   padding: 52px 20px;
-  background: var(--color-surface);
+  background: var(--color-gray-100);
 }
 
 .brand-logo {
   display: block;
-  width: 91px;
+  width: 162px;
   height: 24px;
   object-fit: contain;
 }
@@ -44,15 +50,16 @@
   height: 52px;
   padding: 0 16px;
   border-radius: 16px;
-  color: var(--color-black);
+  color: var(--color-gray-800);
   font-size: 14px;
+  font-weight: 500;
   line-height: 20px;
   text-decoration: none;
 }
 
 .sidebar__item[aria-current='page'] {
   background: var(--color-white);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .admin-content {
@@ -76,10 +83,11 @@
 
 .data-view__title {
   margin: 0;
-  color: var(--color-black);
+  color: var(--color-gray-800);
   font-size: 32px;
-  font-weight: 700;
-  line-height: 40px;
+  font-weight: 600;
+  letter-spacing: -0.8px;
+  line-height: 44px;
   white-space: nowrap;
 }
 
@@ -109,8 +117,10 @@
 
 .date-filter,
 .date-range-filter {
-  color: var(--color-black);
+  color: var(--color-gray-800);
   font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.35px;
   line-height: 20px;
   white-space: nowrap;
 }
@@ -167,22 +177,24 @@
   border: 0;
   outline: 0;
   background: transparent;
-  color: var(--color-black);
+  color: var(--color-gray-800);
   font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.35px;
   line-height: 20px;
 }
 
 .filter-control__input {
-  width: 200px;
+  width: 165px;
 }
 
 .filter-control__input::placeholder {
-  color: var(--color-black);
+  color: var(--color-gray-800);
   opacity: 1;
 }
 
 .filter-control--select {
-  width: 160px;
+  width: 146px;
 }
 
 .filter-control__select {
@@ -212,33 +224,11 @@
   border-collapse: separate;
   border-spacing: 0;
   table-layout: auto;
-  color: var(--color-black);
+  color: var(--color-gray-800);
   font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.35px;
   line-height: 20px;
-}
-
-.receipt-data-page .data-table {
-  width: 100%;
-  min-width: 1598px;
-  table-layout: fixed;
-}
-
-.settlement-page .data-table {
-  width: 100%;
-  min-width: 1598px;
-  table-layout: fixed;
-}
-
-.settlement-page .data-table th:nth-child(3),
-.settlement-page .data-table td:nth-child(3),
-.settlement-page .data-table th:nth-child(6),
-.settlement-page .data-table td:nth-child(6) {
-  width: 120px;
-}
-
-.settlement-page .data-table th:nth-child(10),
-.settlement-page .data-table td:nth-child(10) {
-  width: 178px;
 }
 
 .data-table th,
@@ -255,8 +245,8 @@
 }
 
 .data-table th {
-  background: var(--color-surface);
-  font-weight: 700;
+  background: var(--color-gray-100);
+  font-weight: 600;
 }
 
 .data-table th:first-child {
@@ -339,9 +329,15 @@
   background: var(--color-gray-800);
   color: var(--color-white);
   font-size: 12px;
-  line-height: normal;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  line-height: 16px;
   text-decoration: none;
   cursor: pointer;
+}
+
+.table-action--danger {
+  background: var(--color-danger);
 }
 
 .floating-action {
@@ -388,7 +384,7 @@
   cursor: pointer;
 }
 
-.settlement-delete-overlay {
+.confirmation-dialog-overlay {
   position: fixed;
   inset: 0;
   z-index: 3;
@@ -398,44 +394,60 @@
   background: rgba(0, 0, 0, 0.4);
 }
 
-.settlement-delete-dialog {
+.confirmation-dialog {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   justify-content: center;
   gap: 18px;
   width: 350px;
-  height: 164px;
   padding: 20px;
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 32px;
   background: var(--color-white);
+  box-shadow: 0 10px 5px rgba(0, 0, 0, 0.04);
+  font-family: var(--font-family-suit);
 }
 
-.settlement-delete-dialog__message {
+.confirmation-dialog__message {
   width: 100%;
   color: var(--color-gray-800);
   font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.35px;
   line-height: 20px;
 }
 
-.settlement-delete-dialog__message p {
+.confirmation-dialog__message p {
   margin: 0;
 }
 
-.settlement-delete-dialog__actions {
+.confirmation-dialog__actions {
   display: flex;
   gap: 8px;
 }
 
-.settlement-delete-dialog__actions button {
-  height: 44px;
+.confirmation-dialog__action {
+  height: 48px;
   padding: 0 16px;
-  border: 0;
-  background: var(--color-gray-800);
-  color: var(--color-white);
+  border-radius: 48px;
   font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.35px;
   line-height: 20px;
+  white-space: nowrap;
   cursor: pointer;
+}
+
+.confirmation-dialog__action--confirm {
+  border: 1px solid var(--color-brand);
+  background: var(--color-white);
+  color: var(--color-brand);
+}
+
+.confirmation-dialog__action--cancel {
+  border: 1px solid var(--color-brand);
+  background: var(--color-brand);
+  color: var(--color-white);
 }
 
 .form-page {

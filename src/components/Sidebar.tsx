@@ -1,4 +1,4 @@
-import logo from '../assets/hplus-eco-logo.png'
+import logo from '../assets/hayan100-logo.png'
 
 const menuItems = [
   { href: '#/dashboard', label: '대시보드' },
@@ -19,7 +19,7 @@ export function Sidebar({ activeMenu }: SidebarProps) {
   return (
     <aside className="sidebar">
       <a href="#/dashboard" aria-label="통합 대시보드로 이동">
-        <img className="brand-logo" src={logo} alt="H-Plus Eco" />
+        <img className="brand-logo" src={logo} alt="HAYAN100" />
       </a>
       <nav aria-label="관리자 메뉴">
         <ul className="sidebar__menu">

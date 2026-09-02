@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import calendarIcon from '../assets/calendar.svg'
 import packageIcon from '../assets/package.svg'
+import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { DataPageHeader } from '../components/DataPageHeader'
 import { DataTable, type DataTableColumn } from '../components/DataTable'
 import { SearchFilter } from '../components/PageFilters'
@@ -148,26 +149,13 @@ export function LogisticsSettlementPage() {
       </div>
 
       {deleteTarget ? (
-        <div className="settlement-delete-overlay">
-          <div
-            aria-describedby="settlement-delete-description"
-            aria-labelledby="settlement-delete-title"
-            className="settlement-delete-dialog"
-            role="dialog"
-            aria-modal="true"
-          >
-            <div className="settlement-delete-dialog__message">
-              <p id="settlement-delete-title">물류사 정보를 삭제하시겠습니까?</p>
-              <p id="settlement-delete-description">
-                물류사 정보를 삭제하면 소속 기사 및 마일리지 데이터 또한 복구하실 수 없습니다.
-              </p>
-            </div>
-            <div className="settlement-delete-dialog__actions">
-              <button onClick={() => setDeleteTarget(null)} type="button">삭제</button>
-              <button onClick={() => setDeleteTarget(null)} type="button">취소</button>
-            </div>
-          </div>
-        </div>
+        <ConfirmationDialog
+          actionLabel="삭제"
+          description="물류사 정보를 삭제하면 소속 기사 및 마일리지 데이터 또한 복구하실 수 없습니다."
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={() => setDeleteTarget(null)}
+          title="물류사 정보를 삭제하시겠습니까?"
+        />
       ) : null}
     </section>
   )
