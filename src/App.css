@@ -185,7 +185,7 @@
 }
 
 .filter-control__input {
-  width: 165px;
+  width: 200px;
 }
 
 .filter-control__input::placeholder {
@@ -486,7 +486,7 @@
 .form-field-label {
   align-self: flex-start;
   padding: 0 8px;
-  color: var(--color-black);
+  color: var(--color-gray-800);
   font-family: var(--font-family-suit);
   font-size: 14px;
   font-weight: 500;
@@ -621,6 +621,7 @@
   object-fit: contain;
 }
 
+.infrastructure-form .form-control,
 .login-form .form-control {
   gap: 8px;
 }

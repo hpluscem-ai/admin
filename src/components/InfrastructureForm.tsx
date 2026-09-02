@@ -13,9 +13,14 @@ export type InfrastructureValues = {
   station: string
 }
 
+export type InfrastructureSaveResult =
+  | { ok: true }
+  | { message?: string; ok: false }
+
 type InfrastructureFormProps = {
   actionLabel: string
   initialValues?: Partial<InfrastructureValues>
+  save?: (values: InfrastructureValues) => Promise<InfrastructureSaveResult>
 }
 
 type InfrastructureField = {
@@ -29,8 +34,8 @@ type InfrastructureField = {
 const fields: readonly InfrastructureField[] = [
   {
     name: 'station',
-    label: '주유소 이름',
-    placeholder: '주유소 이름을 입력해주세요.',
+    label: '주유소명',
+    placeholder: '주유소명을 입력해주세요.',
     required: true,
   },
   {
@@ -48,14 +53,14 @@ const fields: readonly InfrastructureField[] = [
   {
     name: 'capacity',
     label: '용량',
-    placeholder: '용량을 입력해주세요.',
+    placeholder: '용량을 입력해주세요. (단위: L)',
     required: true,
     inputMode: 'numeric',
   },
   {
     name: 'address',
     label: '주소',
-    placeholder: '주소를 입력해주세요.',
+    placeholder: '시군구를 포함한 도로명 주소를 입력해주세요.',
     required: true,
   },
   {
@@ -150,6 +155,14 @@ function validateField(field: InfrastructureField, value: string) {
     return `${field.label}를 숫자 형식으로 입력해주세요.`
   }
 
+  if (
+    field.name === 'address' &&
+    value &&
+    !/[가-힣]+(?:시|군|구)(?:\s|$)/.test(value.trim())
+  ) {
+    return '시/군/구가 포함된 주소를 입력해주세요.'
+  }
+
   return undefined
 }
 
@@ -165,19 +178,24 @@ function getFormErrors(values: InfrastructureValues) {
   }, {})
 }
 
-export function InfrastructureForm({ actionLabel, initialValues }: InfrastructureFormProps) {
+export function InfrastructureForm({
+  actionLabel,
+  initialValues,
+  save,
+}: InfrastructureFormProps) {
   const isEditForm = initialValues !== undefined
   const [initialFormValues] = useState(() => createInitialValues(initialValues ?? {}))
   const [values, setValues] = useState(initialFormValues)
   const [errors, setErrors] = useState<InfrastructureErrors>({})
+  const [submitError, setSubmitError] = useState('')
 
-  const isValid = fields.every(
-    (field) => validateField(field, values[field.name]) === undefined,
+  const hasAllRequiredValues = fields.every(
+    (field) => !field.required || Boolean(values[field.name].trim()),
   )
   const hasChanges = fields.some(
     ({ name }) => values[name] !== initialFormValues[name],
   )
-  const canSubmit = isValid && (!isEditForm || hasChanges)
+  const canSubmit = isEditForm ? hasChanges : hasAllRequiredValues
 
   const updateField = (name: keyof InfrastructureValues, nextValue: string) => {
     const formattedValue = formatFieldValue(name, nextValue)
@@ -196,6 +214,7 @@ export function InfrastructureForm({ actionLabel, initialValues }: Infrastructur
         [name]: undefined,
       }
     })
+    setSubmitError('')
   }
 
   const handleCapacityKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -212,17 +231,34 @@ export function InfrastructureForm({ actionLabel, initialValues }: Infrastructur
     }
   }
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
     const nextErrors = getFormErrors(values)
     setErrors(nextErrors)
+    setSubmitError('')
 
     if (Object.keys(nextErrors).length > 0) {
       return
     }
 
-    // 서버 API가 확정되면 이 지점에서 등록·수정 요청과 성공 후 이동을 연결한다.
+    if (!save) {
+      setSubmitError('인프라 데이터 저장 서버 연동이 필요합니다.')
+      return
+    }
+
+    try {
+      const result = await save(values)
+
+      if (!result.ok) {
+        setSubmitError(result.message ?? '인프라 데이터를 저장하지 못했습니다.')
+        return
+      }
+
+      window.location.hash = '/infrastructure'
+    } catch {
+      setSubmitError('인프라 데이터 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.')
+    }
   }
 
   return (
@@ -230,34 +266,40 @@ export function InfrastructureForm({ actionLabel, initialValues }: Infrastructur
       <div className="form-fields">
         {fields.map((field) => {
           const error = errors[field.name]
+          const fieldId = `infrastructure-${field.name}`
           const errorId = `infrastructure-${field.name}-error`
 
           return (
             <div className="form-control" key={field.name}>
-              <TextField
-                name={field.name}
-                value={values[field.name]}
-                placeholder={field.placeholder}
-                aria-label={field.label}
-                aria-invalid={Boolean(error)}
-                aria-describedby={error ? errorId : undefined}
-                inputMode={field.inputMode}
-                required={field.required}
-                onBlur={() => {
-                  const nextError = validateField(field, values[field.name])
-                  setErrors((currentErrors) => ({
-                    ...currentErrors,
-                    [field.name]: nextError,
-                  }))
-                }}
-                onChange={(event) => updateField(field.name, event.target.value)}
-                onKeyDown={field.name === 'capacity' ? handleCapacityKeyDown : undefined}
-              />
-              {error ? (
-                <p className="form-field-error" id={errorId} role="alert">
-                  {error}
-                </p>
-              ) : null}
+              <label className="form-field-label" htmlFor={fieldId}>
+                {field.label}
+              </label>
+              <div className="form-field-feedback">
+                <TextField
+                  id={fieldId}
+                  name={field.name}
+                  value={values[field.name]}
+                  placeholder={field.placeholder}
+                  aria-invalid={Boolean(error)}
+                  aria-describedby={error ? errorId : undefined}
+                  inputMode={field.inputMode}
+                  required={field.required}
+                  onBlur={() => {
+                    const nextError = validateField(field, values[field.name])
+                    setErrors((currentErrors) => ({
+                      ...currentErrors,
+                      [field.name]: nextError,
+                    }))
+                  }}
+                  onChange={(event) => updateField(field.name, event.target.value)}
+                  onKeyDown={field.name === 'capacity' ? handleCapacityKeyDown : undefined}
+                />
+                {error ? (
+                  <p className="form-field-error" id={errorId} role="alert">
+                    {error}
+                  </p>
+                ) : null}
+              </div>
             </div>
           )
         })}
@@ -265,6 +307,11 @@ export function InfrastructureForm({ actionLabel, initialValues }: Infrastructur
       <PrimaryButton type="submit" disabled={!canSubmit}>
         {actionLabel}
       </PrimaryButton>
+      {submitError ? (
+        <p className="form-submit-error" role="alert">
+          {submitError}
+        </p>
+      ) : null}
     </form>
   )
 }
