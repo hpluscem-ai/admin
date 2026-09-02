@@ -107,12 +107,16 @@
   position: relative;
 }
 
+.date-filter,
 .date-range-filter {
-  gap: 16px;
   color: var(--color-black);
   font-size: 14px;
   line-height: 20px;
   white-space: nowrap;
+}
+
+.date-range-filter {
+  gap: 16px;
 }
 
 .date-filter {
