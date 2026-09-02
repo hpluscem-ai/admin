@@ -276,7 +276,6 @@
   color: var(--color-danger);
 }
 
-.approval-status[data-status='승인'],
 .brand-text {
   color: var(--color-brand);
 }
