@@ -621,6 +621,7 @@
 }
 
 .infrastructure-form .form-control,
+.logistics-form .form-control,
 .login-form .form-control {
   gap: 8px;
 }

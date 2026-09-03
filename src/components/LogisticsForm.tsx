@@ -1,12 +1,17 @@
 import { useState, type FormEvent } from 'react'
 
 import chevronDownIcon from '../assets/chevron-down.svg'
+import {
+  bankCodeOptions,
+  type BankCodeOption,
+} from '../data/bankCodeOptions'
 import { PrimaryButton, TextField } from './FormControls'
 
 export type LogisticsFormValues = {
   accountHolder: string
   accountNumber: string
   bank: string
+  bankCode: string
   businessAddress: string
   businessName: string
   businessNumber: string
@@ -30,7 +35,7 @@ type LogisticsField = {
   label: string
   name: keyof LogisticsFormValues
   placeholder: string
-  type: 'select' | 'text'
+  type: 'bank' | 'text'
 }
 
 const fields: readonly LogisticsField[] = [
@@ -84,7 +89,7 @@ const fields: readonly LogisticsField[] = [
     name: 'bank',
     label: '은행',
     placeholder: '은행을 선택해주세요.',
-    type: 'select',
+    type: 'bank',
   },
   {
     name: 'accountHolder',
@@ -94,30 +99,11 @@ const fields: readonly LogisticsField[] = [
   },
 ]
 
-const bankOptions = [
-  '국민은행',
-  '신한은행',
-  '하나은행',
-  '우리은행',
-  '농협은행',
-  '기업은행',
-  'SC제일은행',
-  '대구은행',
-  '부산은행',
-  '광주은행',
-  '제주은행',
-  '전북은행',
-  '경남은행',
-  '수협은행',
-  '산업은행',
-  '카카오뱅크',
-  '토스뱅크',
-] as const
-
 const emptyValues: LogisticsFormValues = {
   accountHolder: '',
   accountNumber: '',
   bank: '',
+  bankCode: '',
   businessAddress: '',
   businessName: '',
   businessNumber: '',
@@ -125,6 +111,8 @@ const emptyValues: LogisticsFormValues = {
   managerName: '',
   managerPhone: '',
 }
+
+const formValueKeys = Object.keys(emptyValues) as readonly (keyof LogisticsFormValues)[]
 
 type LogisticsErrors = Partial<Record<keyof LogisticsFormValues, string>>
 
@@ -157,13 +145,17 @@ function formatPhone(value: string) {
   return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`
 }
 
+function formatAccountNumber(value: string) {
+  return value.replace(/[^\d-]/g, '')
+}
+
 function formatFieldValue(name: keyof LogisticsFormValues, value: string) {
   if (name === 'businessNumber') return formatBusinessNumber(value)
   if (name === 'corporateRegistrationNumber') {
     return formatCorporateRegistrationNumber(value)
   }
   if (name === 'managerPhone') return formatPhone(value)
-  if (name === 'accountNumber') return getDigits(value)
+  if (name === 'accountNumber') return formatAccountNumber(value)
 
   return value
 }
@@ -179,7 +171,11 @@ function createInitialValues(initialValues?: LogisticsFormValues) {
   ) as LogisticsFormValues
 }
 
-function validateField(field: LogisticsField, value: string) {
+function validateField(
+  field: LogisticsField,
+  value: string,
+  values: LogisticsFormValues,
+) {
   if (!value.trim()) return field.placeholder
 
   if (field.name === 'businessNumber' && !/^\d{3}-\d{2}-\d{5}$/.test(value)) {
@@ -204,8 +200,17 @@ function validateField(field: LogisticsField, value: string) {
     return '담당자연락처를 010-XXXX-XXXX 형식으로 입력해주세요.'
   }
 
-  if (field.name === 'accountNumber' && !/^\d+$/.test(value)) {
-    return '계좌번호는 숫자만 입력해주세요.'
+  if (field.name === 'accountNumber' && !/^(?=.*\d)[\d-]+$/.test(value)) {
+    return '계좌번호는 숫자와 하이픈만 입력해주세요.'
+  }
+
+  if (
+    field.name === 'bank' &&
+    !bankCodeOptions.some(
+      ({ code, name }) => code === values.bankCode && name === value,
+    )
+  ) {
+    return '은행 목록에서 은행을 선택해주세요.'
   }
 
   return undefined
@@ -213,7 +218,7 @@ function validateField(field: LogisticsField, value: string) {
 
 function getFormErrors(values: LogisticsFormValues) {
   return fields.reduce<LogisticsErrors>((errors, field) => {
-    const error = validateField(field, values[field.name])
+    const error = validateField(field, values[field.name], values)
 
     if (error) errors[field.name] = error
 
@@ -229,14 +234,20 @@ export function LogisticsForm({ actionLabel, initialValues, save }: LogisticsFor
   const [errors, setErrors] = useState<LogisticsErrors>({})
   const [submitError, setSubmitError] = useState('')
 
-  const hasAllValues = fields.every(({ name }) => Boolean(values[name].trim()))
-  const hasChanges = fields.some(({ name }) => values[name] !== initialFormValues[name])
+  const hasAllValues = (
+    fields.every(({ name }) => Boolean(values[name].trim())) &&
+    Boolean(values.bankCode)
+  )
+  const hasChanges = formValueKeys.some(
+    (name) => values[name] !== initialFormValues[name],
+  )
   const canSubmit = isEditForm ? hasChanges : hasAllValues
 
   const updateField = (name: keyof LogisticsFormValues, nextValue: string) => {
     setValues((currentValues) => ({
       ...currentValues,
       [name]: formatFieldValue(name, nextValue),
+      ...(name === 'bank' ? { bankCode: '' } : {}),
     }))
     setErrors((currentErrors) => {
       if (!currentErrors[name]) return currentErrors
@@ -246,6 +257,19 @@ export function LogisticsForm({ actionLabel, initialValues, save }: LogisticsFor
         [name]: undefined,
       }
     })
+    setSubmitError('')
+  }
+
+  const selectBank = (bank: BankCodeOption) => {
+    setValues((currentValues) => ({
+      ...currentValues,
+      bank: bank.name,
+      bankCode: bank.code,
+    }))
+    setErrors((currentErrors) => ({
+      ...currentErrors,
+      bank: undefined,
+    }))
     setSubmitError('')
   }
 
@@ -282,67 +306,86 @@ export function LogisticsForm({ actionLabel, initialValues, save }: LogisticsFor
       <div className="form-fields">
         {fields.map((field) => {
           const error = errors[field.name]
+          const fieldId = `logistics-${field.name}`
           const errorId = `logistics-${field.name}-error`
 
           return (
             <div className="form-control" key={field.name}>
-              {field.type === 'select' ? (
-                <div className="logistics-form__select-field">
-                  <select
+              <label className="form-field-label" htmlFor={fieldId}>
+                {field.label}
+              </label>
+              <div className="form-field-feedback">
+                {field.type === 'bank' ? (
+                  <div className="logistics-form__select-field">
+                    <select
+                      aria-describedby={error ? errorId : undefined}
+                      aria-invalid={Boolean(error)}
+                      className="form-field logistics-form__select"
+                      id={fieldId}
+                      name={field.name}
+                      onBlur={() => {
+                        const nextError = validateField(
+                          field,
+                          values[field.name],
+                          values,
+                        )
+                        setErrors((currentErrors) => ({
+                          ...currentErrors,
+                          [field.name]: nextError,
+                        }))
+                      }}
+                      onChange={(event) => {
+                        const selectedBank = bankCodeOptions.find(
+                          ({ code }) => code === event.target.value,
+                        )
+                        if (selectedBank) selectBank(selectedBank)
+                      }}
+                      required
+                      value={values.bankCode}
+                    >
+                      <option disabled value="">
+                        {field.placeholder}
+                      </option>
+                      {bankCodeOptions.map((bank) => (
+                        <option key={bank.code} value={bank.code}>
+                          {bank.name}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="logistics-form__select-icon" aria-hidden="true">
+                      <img src={chevronDownIcon} alt="" />
+                    </span>
+                  </div>
+                ) : (
+                  <TextField
                     aria-describedby={error ? errorId : undefined}
                     aria-invalid={Boolean(error)}
-                    aria-label={field.label}
-                    className="form-field logistics-form__select"
+                    id={fieldId}
+                    inputMode={field.inputMode}
                     name={field.name}
                     onBlur={() => {
-                      const nextError = validateField(field, values[field.name])
+                      const nextError = validateField(
+                        field,
+                        values[field.name],
+                        values,
+                      )
                       setErrors((currentErrors) => ({
                         ...currentErrors,
                         [field.name]: nextError,
                       }))
                     }}
                     onChange={(event) => updateField(field.name, event.target.value)}
+                    placeholder={field.placeholder}
                     required
                     value={values[field.name]}
-                  >
-                    <option disabled value="">
-                      {field.placeholder}
-                    </option>
-                    {bankOptions.map((bank) => (
-                      <option key={bank} value={bank}>
-                        {bank}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="logistics-form__select-icon" aria-hidden="true">
-                    <img src={chevronDownIcon} alt="" />
-                  </span>
-                </div>
-              ) : (
-                <TextField
-                  aria-describedby={error ? errorId : undefined}
-                  aria-invalid={Boolean(error)}
-                  aria-label={field.label}
-                  inputMode={field.inputMode}
-                  name={field.name}
-                  onBlur={() => {
-                    const nextError = validateField(field, values[field.name])
-                    setErrors((currentErrors) => ({
-                      ...currentErrors,
-                      [field.name]: nextError,
-                    }))
-                  }}
-                  onChange={(event) => updateField(field.name, event.target.value)}
-                  placeholder={field.placeholder}
-                  required
-                  value={values[field.name]}
-                />
-              )}
-              {error ? (
-                <p className="form-field-error" id={errorId} role="alert">
-                  {error}
-                </p>
-              ) : null}
+                  />
+                )}
+                {error ? (
+                  <p className="form-field-error" id={errorId} role="alert">
+                    {error}
+                  </p>
+                ) : null}
+              </div>
             </div>
           )
         })}
