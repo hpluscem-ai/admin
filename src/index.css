@@ -37,11 +37,12 @@
   --color-gray-100: #f6f7fa;
   --color-gray-200: #e9ecf2;
   --color-gray-400: #a9b1c1;
+  --color-gray-600: #5e677a;
   --color-gray-700: #3f4759;
   --color-gray-800: #262c3a;
   --color-brand: #000047;
   --color-brand-text: #040648;
-  --color-primary: #4c69fe;
+  --color-primary: #4c96fe;
   --color-danger: #fe4c4c;
   --font-family-footer: 'Inter Local', Inter, sans-serif;
   --font-family-suit: 'SUIT', Pretendard, sans-serif;

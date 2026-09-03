@@ -642,8 +642,8 @@
 .recent-card {
   padding: 32px;
   border-radius: 32px;
-  background: var(--color-surface);
-  color: var(--color-black);
+  background: var(--color-gray-100);
+  color: var(--color-gray-800);
 }
 
 .summary-card {
@@ -654,6 +654,7 @@
 
 .summary-card__top {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
   font-size: 14px;
@@ -661,7 +662,10 @@
 }
 
 .summary-card__top a {
-  color: inherit;
+  color: var(--color-gray-600);
+  font-size: 12px;
+  letter-spacing: -0.3px;
+  line-height: 16px;
   text-decoration: none;
   white-space: nowrap;
 }
@@ -673,14 +677,21 @@
 }
 
 .summary-card__value {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
   font-size: 32px;
-  line-height: 32px;
+  font-weight: 600;
+  letter-spacing: -0.8px;
+  line-height: 44px;
   white-space: nowrap;
 }
 
 .summary-card__value span {
-  margin-left: 4px;
+  padding: 6px 0;
   font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.35px;
   line-height: 20px;
 }
 
@@ -692,6 +703,7 @@
 
 .recent-card__title {
   font-size: 14px;
+  font-weight: 600;
   line-height: 20px;
 }
 
@@ -703,8 +715,9 @@
 }
 
 .recent-card__link {
-  color: inherit;
+  color: var(--color-gray-600);
   font-size: 12px;
+  letter-spacing: -0.3px;
   line-height: 16px;
   text-decoration: none;
   white-space: nowrap;
@@ -718,12 +731,14 @@
 
 .recent-card__mileage {
   font-size: 16px;
+  letter-spacing: -0.4px;
   line-height: 24px;
 }
 
 .recent-card__detail {
   margin-top: 2px;
   font-size: 12px;
+  letter-spacing: -0.3px;
   line-height: 16px;
 }
 
@@ -731,8 +746,10 @@
   padding: 4px 8px;
   border-radius: 16px;
   background: rgba(76, 105, 254, 0.1);
-  color: var(--color-brand);
+  color: var(--color-primary);
   font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
   line-height: 16px;
 }
 
@@ -765,17 +782,17 @@
 
 .dashboard-chart h2 {
   margin: 0;
-  color: var(--color-black);
-  font-size: 14px;
-  font-weight: 400;
-  line-height: 20px;
+  color: var(--color-gray-800);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+  line-height: 30px;
 }
 
 .dashboard-chart__toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 44px;
 }
 
 .dashboard-chart__content {
@@ -793,28 +810,21 @@
 .dashboard-chart__legend {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 2.7px;
   margin: 0;
   font-size: 14px;
   line-height: 20px;
 }
 
 .dashboard-chart__legend > span {
-  width: 7px;
-  height: 7px;
-  border-radius: 2px;
-  background: var(--color-brand);
-}
-
-.dashboard-chart__legend[data-series='affiliation'] > span {
+  width: 7.2px;
+  height: 7.2px;
+  border-radius: 1.8px;
   background: var(--color-primary);
 }
 
-.dashboard-chart__toolbar .filter-control {
-  width: 240px;
-  height: 44px;
-  padding: 0 16px;
-  background: var(--color-gray-100);
+.dashboard-chart__legend[data-series='affiliation'] > span {
+  background: var(--color-danger);
 }
 
 .dashboard-chart__body {
@@ -830,7 +840,7 @@
 
 .dashboard-chart__plot {
   position: relative;
-  height: 300px;
+  height: 304.8px;
 }
 
 .dashboard-chart__grid {
@@ -850,7 +860,7 @@
 .dashboard-chart__grid-row span {
   width: 44px;
   color: var(--color-gray-700);
-  font-size: 12px;
+  font-size: 14px;
   text-align: center;
 }
 
@@ -879,20 +889,19 @@
 }
 
 .dashboard-chart__series--common {
-  stroke: url('#mileage-common-gradient');
-  filter: drop-shadow(0 3.6px 9px rgba(0, 0, 71, 0.2));
-}
-
-.dashboard-chart__series--affiliation {
   stroke: var(--color-primary);
 }
 
+.dashboard-chart__series--affiliation {
+  stroke: var(--color-danger);
+}
+
 .dashboard-chart__point--common {
-  fill: var(--color-brand);
+  fill: var(--color-primary);
 }
 
 .dashboard-chart__point--affiliation {
-  fill: var(--color-primary);
+  fill: var(--color-danger);
 }
 
 .dashboard-chart__dates {
@@ -902,7 +911,8 @@
   left: 49px;
   display: grid;
   color: var(--color-gray-700);
-  font-size: 12px;
+  font-size: 14px;
+  line-height: 20px;
   text-align: center;
   white-space: nowrap;
 }

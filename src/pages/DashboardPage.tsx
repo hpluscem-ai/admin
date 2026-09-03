@@ -272,11 +272,6 @@ function MileageChart({ affiliations, dateRange, receipts }: MileageChartProps) 
               viewBox={`0 0 ${chartWidth} ${chartHeight}`}
             >
               <defs>
-                <linearGradient id="mileage-common-gradient" x1="0%" x2="100%" y1="0%" y2="0%">
-                  <stop offset="0%" stopColor="var(--color-brand)" stopOpacity="0.2" />
-                  <stop offset="50%" stopColor="var(--color-brand)" />
-                  <stop offset="100%" stopColor="var(--color-brand)" stopOpacity="0.2" />
-                </linearGradient>
                 <clipPath id="mileage-chart-clip">
                   <rect
                     height={chartHeight + 20}
