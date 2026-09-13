@@ -987,3 +987,267 @@
 .site-footer__company {
   font-style: normal;
 }
+
+.erd-page {
+  gap: 16px;
+}
+
+.erd-toolbar,
+.erd-toolbar__status {
+  display: flex;
+  align-items: center;
+}
+
+.erd-toolbar {
+  gap: 16px;
+}
+
+.erd-toolbar__status {
+  color: var(--color-gray-600);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.erd-toolbar__reset {
+  height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--color-brand);
+  border-radius: 20px;
+  background: var(--color-white);
+  color: var(--color-brand);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.erd-toolbar__reset:disabled {
+  border-color: var(--color-gray-200);
+  color: var(--color-gray-400);
+  cursor: default;
+}
+
+.erd-page__guide {
+  color: var(--color-gray-600);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.erd-page__relations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.erd-page__relations li,
+.erd-page__relations li > span {
+  display: flex;
+  align-items: center;
+}
+
+.erd-page__relations li {
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--color-gray-100);
+  color: var(--color-gray-800);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.erd-page__relations li > span {
+  gap: 2px;
+}
+
+.erd-page__relations code {
+  color: var(--color-gray-600);
+  font-family: var(--font-family-footer);
+  font-size: 10px;
+}
+
+.erd-page__relations small {
+  color: var(--color-gray-600);
+  font-family: var(--font-family-footer);
+  font-size: 10px;
+}
+
+.erd-canvas {
+  height: 1600px;
+  overflow: hidden;
+  border: 1px solid var(--color-gray-200);
+  border-radius: 32px;
+  background: var(--color-surface);
+}
+
+.erd-canvas .react-flow__node-erdTable {
+  width: 520px;
+}
+
+.erd-node {
+  --erd-category-color: var(--color-brand);
+  overflow: hidden;
+  width: 100%;
+  border: 1px solid var(--color-gray-200);
+  border-top: 4px solid var(--erd-category-color);
+  border-radius: 16px;
+  background: var(--color-white);
+  color: var(--color-gray-800);
+}
+
+.erd-node[data-category='infrastructure'] {
+  --erd-category-color: var(--color-primary);
+}
+
+.erd-node[data-category='mileage'] {
+  --erd-category-color: var(--color-danger);
+}
+
+.erd-node[data-category='authentication'] {
+  --erd-category-color: var(--color-gray-600);
+}
+
+.erd-node[data-focused='true'] {
+  border-color: var(--erd-category-color);
+  border-top-width: 4px;
+}
+
+.erd-node[data-dimmed='true'] {
+  opacity: 0.16;
+}
+
+.erd-node__header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 16px 18px 14px;
+  border: 0;
+  background: var(--color-gray-100);
+  color: var(--color-gray-800);
+  text-align: left;
+  cursor: pointer;
+}
+
+.erd-node__header:focus-visible,
+.erd-toolbar__reset:focus-visible,
+.erd-canvas .react-flow__controls-button:focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: -3px;
+}
+
+.erd-node__category {
+  color: var(--erd-category-color);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: -0.25px;
+  line-height: 14px;
+}
+
+.erd-node__header strong {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.4px;
+  line-height: 24px;
+}
+
+.erd-node__table-name {
+  color: var(--color-gray-600);
+  font-family: var(--font-family-footer);
+  font-size: 11px;
+  letter-spacing: 0;
+  line-height: 16px;
+}
+
+.erd-node__fields {
+  display: flex;
+  flex-direction: column;
+}
+
+.erd-node__field {
+  display: grid;
+  grid-template-columns: 1.45fr 52px 1fr;
+  align-items: start;
+  gap: 10px;
+  min-height: 38px;
+  padding: 9px 18px;
+  box-shadow: inset 0 -1px 0 var(--color-gray-200);
+  font-family: var(--font-family-footer);
+  font-size: 11px;
+  letter-spacing: 0;
+  line-height: 16px;
+}
+
+.erd-node__field-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.erd-node__field-type {
+  flex: none;
+  color: var(--color-gray-600);
+  font-size: 10px;
+}
+
+.erd-node__field-description {
+  color: var(--color-gray-700);
+  font-family: var(--font-family-suit);
+  font-size: 11px;
+  letter-spacing: -0.25px;
+  line-height: 16px;
+}
+
+.erd-node__field-key {
+  flex: none;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--color-gray-200);
+  color: var(--color-brand);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 12px;
+}
+
+.erd-node__constraints {
+  padding: 9px 18px;
+  color: var(--color-gray-600);
+  font-family: var(--font-family-footer);
+  font-size: 10px;
+  letter-spacing: 0;
+  line-height: 14px;
+}
+
+.erd-node__constraints {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: var(--color-surface);
+}
+
+.erd-node .react-flow__handle {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--color-white);
+  background: var(--erd-category-color);
+}
+
+.erd-canvas .react-flow__controls {
+  overflow: hidden;
+  border: 1px solid var(--color-gray-200);
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+.erd-canvas .react-flow__controls-button {
+  width: 36px;
+  height: 36px;
+  border-bottom-color: var(--color-gray-200);
+  background: var(--color-white);
+  color: var(--color-gray-800);
+}

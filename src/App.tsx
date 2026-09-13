@@ -5,6 +5,7 @@ import { getInfrastructureMockDataById } from './data/infrastructureMockData'
 import { getLogisticsSettlementMockDataById } from './data/logisticsSettlementMockData'
 import { DashboardPage } from './pages/DashboardPage'
 import { DriverDataPage } from './pages/DriverDataPage'
+import { ErdPage } from './pages/ErdPage'
 import { InfrastructureDataPage } from './pages/InfrastructureDataPage'
 import { InfrastructureCreatePage, InfrastructureEditPage } from './pages/InfrastructureFormPage'
 import { LoginPage } from './pages/LoginPage'
@@ -15,6 +16,7 @@ import { ReceiptDataPage } from './pages/ReceiptDataPage'
 const routes = {
   '/dashboard': { activeMenu: '대시보드', Page: DashboardPage },
   '/drivers': { activeMenu: '소속 기사 데이터 목록', Page: DriverDataPage },
+  '/erd': { activeMenu: '통합 DB 구조', Page: ErdPage },
   '/infrastructure': { activeMenu: '인프라 데이터 목록', Page: InfrastructureDataPage },
   '/infrastructure/new': { activeMenu: '인프라 데이터 목록', Page: InfrastructureCreatePage },
   '/receipts': { activeMenu: '영수 데이터 목록', Page: ReceiptDataPage },
