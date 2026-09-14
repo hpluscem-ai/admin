@@ -1,4 +1,5 @@
-import { useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { AdminApiError, getCurrentAdmin, loginAdmin } from './adminAuth'
 import './App.css'
 import { AdminLayout } from './components/AdminLayout'
 import { getInfrastructureMockDataById } from './data/infrastructureMockData'
@@ -8,7 +9,7 @@ import { DriverDataPage } from './pages/DriverDataPage'
 import { ErdPage } from './pages/ErdPage'
 import { InfrastructureDataPage } from './pages/InfrastructureDataPage'
 import { InfrastructureCreatePage, InfrastructureEditPage } from './pages/InfrastructureFormPage'
-import { LoginPage } from './pages/LoginPage'
+import { LoginPage, type AdminLoginCredentials } from './pages/LoginPage'
 import { LogisticsCreatePage, LogisticsEditPage } from './pages/LogisticsFormPage'
 import { LogisticsSettlementPage } from './pages/LogisticsSettlementPage'
 import { ReceiptDataPage } from './pages/ReceiptDataPage'
@@ -53,7 +54,48 @@ function getRouteId(path: string, routePrefix: string) {
 function App() {
   const path = useSyncExternalStore(subscribeToRoute, getRoute, getRoute)
 
-  if (!path || path === '/login') return <LoginPage />
+  const activeRequest = useRef<object | null>(null)
+  const [session, setSession] = useState<{
+    path: string
+    status: 'signedIn' | 'signedOut' | 'error'
+  } | null>(null)
+
+  useEffect(() => {
+    const current = {}
+    activeRequest.current = current
+    setSession(null)
+    void getCurrentAdmin().then(() => {
+      if (activeRequest.current !== current) return
+      setSession({ path, status: 'signedIn' })
+      if (!path || path === '/login') window.location.hash = '/dashboard'
+    }).catch((error: unknown) => {
+      if (activeRequest.current !== current) return
+      const invalid = error instanceof AdminApiError && error.status === 401 && error.code === 'INVALID_ADMIN_SESSION'
+      setSession({ path, status: invalid ? 'signedOut' : 'error' })
+    })
+    return () => { activeRequest.current = null }
+  }, [path])
+
+  async function authenticate(credentials: AdminLoginCredentials) {
+    const current = {}
+    activeRequest.current = current
+    try {
+      await loginAdmin(credentials)
+      if (activeRequest.current !== current) return { ok: false } as const
+      setSession({ path, status: 'signedIn' })
+      return { ok: true } as const
+    } catch (error) {
+      if (error instanceof AdminApiError && error.status === 401 && error.code === 'INVALID_CREDENTIALS') {
+        return { ok: false } as const
+      }
+      throw error
+    }
+  }
+
+  if (!session || session.path !== path) return null
+  if (session.status !== 'signedIn') {
+    return <LoginPage key={`${path}:${session.status}`} authenticate={authenticate} requestFailed={session.status === 'error'} />
+  }
 
   const infrastructureEditId = getRouteId(path, infrastructureEditRoutePrefix)
 

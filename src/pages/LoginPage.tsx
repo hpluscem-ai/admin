@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import logo from '../assets/hayan100-logo.png'
 import { Footer } from '../components/Footer'
 import { PrimaryButton, TextField } from '../components/FormControls'
@@ -7,7 +7,7 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const PASSWORD_PATTERN = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[^A-Za-z\d\s]).{8,}$/
 
 const AUTHENTICATION_ERROR = '이메일 또는 비밀번호가 올바르지 않습니다.'
-const SERVER_INTEGRATION_PENDING_ERROR = '로그인 서버 연동이 필요합니다.'
+const LOGIN_REQUEST_ERROR = '로그인 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.'
 
 export type AdminLoginCredentials = {
   email: string
@@ -17,7 +17,8 @@ export type AdminLoginCredentials = {
 export type AdminLoginResult = { ok: true } | { ok: false }
 
 type LoginPageProps = {
-  authenticate?: (credentials: AdminLoginCredentials) => Promise<AdminLoginResult>
+  requestFailed?: boolean
+  authenticate: (credentials: AdminLoginCredentials) => Promise<AdminLoginResult>
 }
 
 type FieldErrors = {
@@ -39,11 +40,12 @@ function validatePassword(value: string) {
   return undefined
 }
 
-export function LoginPage({ authenticate }: LoginPageProps) {
+export function LoginPage({ authenticate, requestFailed = false }: LoginPageProps) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
-  const [submitError, setSubmitError] = useState('')
+  const [submitError, setSubmitError] = useState(requestFailed ? LOGIN_REQUEST_ERROR : '')
+  const inFlight = useRef(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const canSubmit = Boolean(email.trim() && password) && !isSubmitting
@@ -62,6 +64,7 @@ export function LoginPage({ authenticate }: LoginPageProps) {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (inFlight.current) return
 
     const nextErrors = {
       email: validateEmail(email),
@@ -72,11 +75,7 @@ export function LoginPage({ authenticate }: LoginPageProps) {
 
     if (nextErrors.email || nextErrors.password) return
 
-    if (!authenticate) {
-      setSubmitError(SERVER_INTEGRATION_PENDING_ERROR)
-      return
-    }
-
+    inFlight.current = true
     setIsSubmitting(true)
 
     try {
@@ -89,8 +88,9 @@ export function LoginPage({ authenticate }: LoginPageProps) {
 
       window.location.hash = '/dashboard'
     } catch {
-      setSubmitError('로그인 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.')
+      setSubmitError(LOGIN_REQUEST_ERROR)
     } finally {
+      inFlight.current = false
       setIsSubmitting(false)
     }
   }
