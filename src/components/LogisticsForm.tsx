@@ -253,6 +253,7 @@ export function LogisticsForm({ actionLabel, initialValues, save }: LogisticsFor
   const canSubmit = isEditForm ? hasChanges : hasAllValues
 
   const updateField = (name: keyof LogisticsFormValues, nextValue: string) => {
+    if (submitting.current) return
     setValues((currentValues) => ({
       ...currentValues,
       [name]: formatFieldValue(name, nextValue),
@@ -270,6 +271,7 @@ export function LogisticsForm({ actionLabel, initialValues, save }: LogisticsFor
   }
 
   const selectBank = (bank: BankCodeOption) => {
+    if (submitting.current) return
     setValues((currentValues) => ({
       ...currentValues,
       bank: bank.name,

@@ -381,3 +381,31 @@ test('late deactivation responses after leaving cannot refresh or redirect; curr
   assert.equal(current.window.location.hash, '/login')
   assert.equal(table(current).rows.length, 2)
 })
+
+
+test('pending saves keep visible text and bank equal to the payload; failure unlocks both fields', async () => {
+  for (const id of [null, 'a']) {
+    const page = mount('form', id)
+    const pending = submit(page)
+    const sent = JSON.parse(page.calls[0].options.body)
+    find(page.render(), 'TextField').props.onChange({ target: { value: '늦은 변경' } })
+    find(page.render(), 'select').props.onChange({ target: { value: '11' } })
+    assert.equal(find(page.render(), 'TextField').props.value, sent.businessName)
+    assert.equal(find(page.render(), 'select').props.value, sent.bankCode)
+    await submit(page)
+    assert.equal(page.calls.length, 1)
+    await page.respond(0, 409, { code: 'LOGISTICS_COMPANY_DUPLICATE' })
+    await pending
+    find(page.render(), 'TextField').props.onChange({ target: { value: '재시도 사업자' } })
+    find(page.render(), 'select').props.onChange({ target: { value: '11' } })
+    assert.equal(find(page.render(), 'TextField').props.value, '재시도 사업자')
+    assert.equal(find(page.render(), 'select').props.value, '11')
+    const retry = submit(page)
+    assert.equal(JSON.parse(page.calls[1].options.body).businessName, '재시도 사업자')
+    assert.equal(JSON.parse(page.calls[1].options.body).bankCode, '11')
+    await page.respond(1, id ? 200 : 201, { ...company(id ?? 'new', '재시도 사업자'), bankCode: '11' })
+    await retry
+    assert.equal(page.window.location.hash, '/settlements')
+    assert.equal(page.calls.length, 2)
+  }
+})
