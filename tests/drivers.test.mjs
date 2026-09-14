@@ -1,0 +1,177 @@
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { test } from 'node:test'
+import ts from 'typescript'
+
+const sources = Object.fromEntries(['adminAuth.ts', 'drivers.ts', 'utils/dateRange.ts',
+  'pages/DriverDataPage.tsx', 'components/PageFilters.tsx'].map((path) => [path,
+  ts.transpileModule(readFileSync(new URL(`../src/${path}`, import.meta.url), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
+  }).outputText]))
+const jsx = (type, props) => ({ type, props })
+const tick = () => new Promise((resolve) => setImmediate(resolve))
+const driver = (id, companyId = 'company-a') => ({ id, logisticsCompanyId: companyId,
+  logisticsCompanyName: '같은 회사명', name: `기사 ${id}`, phone: '010-1234-5678',
+  email: `${id}@example.test`, joinedAt: '2026-09-13T18:00:00Z' })
+function find(node, type) {
+  if (!node || typeof node !== 'object') return undefined
+  if (node.type === type) return node
+  return [node.props?.children].flat(Infinity).map((child) => find(child, type)).find(Boolean)
+}
+function mount() {
+  const calls = [], slots = [], effects = []
+  const window = { location: { hash: '#/drivers' } }
+  let index = 0
+  const react = {
+    useState(initial) {
+      const key = index++
+      if (!(key in slots)) slots[key] = typeof initial === 'function' ? initial() : initial
+      return [slots[key], (value) => { slots[key] = typeof value === 'function' ? value(slots[key]) : value }]
+    },
+    useEffect(effect, deps) {
+      const key = index++, previous = slots[key]
+      if (!previous || deps.some((value, i) => value !== previous.deps[i])) {
+        effects.push(() => { previous?.cleanup?.(); slots[key] = { deps, cleanup: effect() } })
+      }
+    },
+  }
+  const imports = { react, 'react/jsx-runtime': { jsx, jsxs: jsx } }
+  const fetch = (url, options) => {
+    const pending = Promise.withResolvers()
+    calls.push({ url, options, ...pending })
+    return pending.promise
+  }
+  const load = (path) => {
+    const exports = {}
+    new Function('require', 'exports', 'fetch', 'window', sources[path])((name) => {
+      if (name.endsWith('.svg')) return { default: name }
+      assert.ok(name in imports, `Unexpected import ${name}`)
+      return imports[name]
+    }, exports, fetch, window)
+    return exports
+  }
+  imports['./adminAuth'] = imports['../adminAuth'] = load('adminAuth.ts')
+  imports['../utils/dateRange'] = load('utils/dateRange.ts')
+  imports['../drivers'] = load('drivers.ts')
+  const filters = load('components/PageFilters.tsx')
+  imports['../components/PageFilters'] = { AffiliationFilter: 'AffiliationFilter', SearchFilter: 'SearchFilter', DateRangeFilter: 'DateRangeFilter' }
+  for (const name of ['ConfirmationDialog', 'DataPageHeader', 'DataTable']) imports[`../components/${name}`] = { [name]: name }
+  const { DriverDataPage } = load('pages/DriverDataPage.tsx')
+  const page = {
+    calls, window, filters,
+    render() { index = 0; const tree = DriverDataPage(); effects.splice(0).forEach((effect) => effect()); return tree },
+    table() { return find(page.render(), 'DataTable').props },
+    change(type, value) { find(page.render(), type).props.onChange(value); page.render() },
+    unmount() { slots.forEach((slot) => slot?.cleanup?.()) },
+    async respond(index, status, data) { calls[index].resolve(Response.json(data, { status })); await tick() },
+  }
+  page.render()
+  return page
+}
+
+test('all-driver affiliation discovery preserves equal names with distinct IDs; filtered rows use server values', async () => {
+  const page = mount()
+  assert.equal(page.calls[0].url, '/api/v1/admin/drivers')
+  assert.match(page.table().emptyMessage, /불러오는 중/)
+  await page.respond(0, 200, [driver('outside-range'), driver('inactive-company-driver', 'company-b')])
+  await page.respond(1, 200, [driver('current')])
+  const affiliation = find(page.render(), 'AffiliationFilter')
+  assert.deepEqual(affiliation.props.options, [
+    { value: 'company-a', label: '같은 회사명' }, { value: 'company-b', label: '같은 회사명' },
+  ])
+  assert.deepEqual(page.table().rows, [driver('current')])
+  for (const key of ['mileage', 'totalAmount']) assert.equal(page.table().columns.find((column) => column.key === key).render(driver('current')), '-')
+  const date = new Date(driver('current').joinedAt)
+  assert.equal(page.table().columns.find((column) => column.key === 'joinedAt').render(driver('current')),
+    `${date.getFullYear()}. ${String(date.getMonth() + 1).padStart(2, '0')}. ${String(date.getDate()).padStart(2, '0')}`)
+  page.change('AffiliationFilter', 'company-b')
+  assert.equal(new URL(page.calls[2].url, 'http://localhost').searchParams.get('logisticsCompanyId'), 'company-b')
+  assert.equal(find(page.render(), 'AffiliationFilter').props.options.length, 2)
+  assert.equal(page.calls.filter(({ url }) => url === '/api/v1/admin/drivers').length, 1)
+})
+
+test('date filters include both local calendar days; names and IDs are encoded as independent API parameters', async () => {
+  const page = mount()
+  page.change('DateRangeFilter', { start: '2026-03-08', end: '2026-03-08' })
+  page.change('SearchFilter', '  김 & + %  ')
+  page.change('AffiliationFilter', 'company-b')
+  const params = new URL(page.calls.at(-1).url, 'http://localhost').searchParams
+  assert.equal(params.get('createdFrom'), new Date(2026, 2, 8).toISOString())
+  assert.equal(params.get('createdBefore'), new Date(2026, 2, 9).toISOString())
+  assert.equal(params.get('nameQuery'), '김 & + %')
+  assert.equal(params.get('logisticsCompanyId'), 'company-b')
+  assert.equal(page.calls.at(-1).options.method, 'GET')
+  assert.equal(page.calls.at(-1).options.credentials, 'include')
+})
+
+test('late filtered data or 401 cannot replace a newer successful query', async () => {
+  for (const status of [200, 401]) {
+    const page = mount()
+    await page.respond(0, 200, [driver('a')])
+    page.change('SearchFilter', 'new')
+    await page.respond(2, 200, [driver('new')])
+    await page.respond(1, status, status === 200 ? [driver('old')] : { code: 'INVALID_ADMIN_SESSION' })
+    assert.deepEqual(page.table().rows, [driver('new')])
+    assert.equal(page.window.location.hash, '#/drivers')
+  }
+})
+
+test('empty success differs from API, malformed and affiliation-discovery failures', async () => {
+  const empty = mount()
+  await empty.respond(0, 200, [])
+  await empty.respond(1, 200, [])
+  assert.equal(empty.table().emptyMessage, '조회 조건에 맞는 기사 데이터가 없습니다.')
+  for (const [failedRequest, status, data] of [[1, 500, {}], [1, 200, {}],
+    [1, 200, [{ ...driver('a'), joinedAt: 'invalid' }]], [0, 500, {}]]) {
+    const page = mount()
+    await page.respond(1 - failedRequest, 200, [driver('a')])
+    await page.respond(failedRequest, status, data)
+    assert.match(page.table().emptyMessage, /불러오지 못했습니다/)
+    assert.deepEqual(page.table().rows, [])
+    assert.equal(page.window.location.hash, '#/drivers')
+  }
+  const offline = mount()
+  await offline.respond(0, 200, [])
+  offline.calls[1].reject(new TypeError('offline'))
+  await tick()
+  assert.match(offline.table().emptyMessage, /불러오지 못했습니다/)
+  offline.change('SearchFilter', 'retry')
+  await offline.respond(2, 200, [])
+  assert.equal(offline.table().emptyMessage, '조회 조건에 맞는 기사 데이터가 없습니다.')
+})
+
+test('current 401 redirects, but responses after leaving the page do not', async () => {
+  for (const request of [0, 1]) {
+    const active = mount()
+    await active.respond(request, 401, { code: 'INVALID_ADMIN_SESSION' })
+    assert.equal(active.window.location.hash, '/login')
+    const stale = mount()
+    stale.unmount()
+    stale.window.location.hash = '#/settlements'
+    await stale.respond(request, 401, { code: 'INVALID_ADMIN_SESSION' })
+    assert.equal(stale.window.location.hash, '#/settlements')
+  }
+})
+
+test('withdraw confirmation cannot remove real rows before the DELETE integration', async () => {
+  const page = mount()
+  await page.respond(0, 200, [driver('a')])
+  await page.respond(1, 200, [driver('a')])
+  page.table().columns.find((column) => column.key === 'actions').render(driver('a')).props.onClick()
+  find(page.render(), 'ConfirmationDialog').props.onConfirm()
+  assert.match(find(page.render(), 'ConfirmationDialog').props.description, /서버 연동이 필요/)
+  assert.equal(page.table().rows.length, 1)
+  assert.equal(page.calls.length, 2)
+})
+
+test('affiliation select supports IDs and labels while preserving legacy string options', () => {
+  const { filters } = mount()
+  const select = find(filters.AffiliationFilter({ options: [{ value: 'a', label: '같은 회사명' }, { value: 'b', label: '같은 회사명' }], value: 'b' }), 'select')
+  assert.equal(select.props.value, 'b')
+  assert.equal(select.props.children[1][1].props.value, 'b')
+  assert.equal(select.props.children[1][1].props.children, '같은 회사명')
+  const legacy = find(filters.AffiliationFilter({ options: ['기존 옵션'] }), 'select')
+  assert.equal(legacy.props.defaultValue, '')
+  assert.equal(legacy.props.children[1][0].props.value, '기존 옵션')
+  assert.equal(legacy.props.children[1][0].props.children, '기존 옵션')
+})

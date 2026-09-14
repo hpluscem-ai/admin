@@ -115,7 +115,8 @@ export function DateRangeFilter({ start, end, onChange }: DateRangeFilterProps) 
 
 type AffiliationFilterProps = {
   onChange?: (affiliation: string) => void
-  options?: readonly string[]
+  options?: readonly (string | { value: string; label: string })[]
+  value?: string
 }
 
 const defaultAffiliations = ['에이치플러스주유소', '하나에너지', '성북주유소'] as const
@@ -123,18 +124,21 @@ const defaultAffiliations = ['에이치플러스주유소', '하나에너지', '
 export function AffiliationFilter({
   onChange,
   options = defaultAffiliations,
+  value,
 }: AffiliationFilterProps = {}) {
   return (
     <label className="filter-control filter-control--select">
       <span className="sr-only">소속 선택</span>
       <select
         className="filter-control__select"
-        defaultValue=""
+        {...(value === undefined ? { defaultValue: '' } : { value })}
         onChange={(event) => onChange?.(event.target.value)}
       >
         <option value="">소속을 선택해주세요.</option>
         {options.map((option) => (
-          <option key={option} value={option}>{option}</option>
+          <option key={typeof option === 'string' ? option : option.value} value={typeof option === 'string' ? option : option.value}>
+            {typeof option === 'string' ? option : option.label}
+          </option>
         ))}
       </select>
       <img className="filter-control__icon filter-control__icon--chevron" src={chevronDownIcon} alt="" />

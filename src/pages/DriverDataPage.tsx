@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { DataPageHeader } from '../components/DataPageHeader'
 import { DataTable, type DataTableColumn } from '../components/DataTable'
@@ -7,25 +7,25 @@ import {
   DateRangeFilter,
   SearchFilter,
 } from '../components/PageFilters'
-import { createDriverMockData, type DriverData } from '../data/driverMockData'
-import { getDefaultDateRange, type DateRange } from '../utils/dateRange'
-
-const numberFormatter = new Intl.NumberFormat('ko-KR')
+import { isInvalidAdminSession } from '../adminAuth'
+import { getDrivers, DRIVERS_LOAD_ERROR, type Driver } from '../drivers'
+import { getDefaultDateRange } from '../utils/dateRange'
 
 function formatDate(value: string) {
-  return value.split('-').join('. ')
+  const date = new Date(value)
+  return `${date.getFullYear()}. ${String(date.getMonth() + 1).padStart(2, '0')}. ${String(date.getDate()).padStart(2, '0')}`
 }
 
 function getColumns(
-  onWithdraw: (driver: DriverData) => void,
-): readonly DataTableColumn<DriverData>[] {
+  onWithdraw: (driver: Driver) => void,
+): readonly DataTableColumn<Driver>[] {
   return [
-    { key: 'affiliation', label: '소속', render: (row) => row.affiliation },
+    { key: 'affiliation', label: '소속', render: (row) => row.logisticsCompanyName },
     { key: 'name', label: '이름', render: (row) => row.name },
     { key: 'phone', label: '연락처', render: (row) => row.phone },
     { key: 'email', label: '이메일', render: (row) => row.email },
-    { key: 'totalAmount', label: '최종 금액', render: (row) => numberFormatter.format(row.totalAmount) },
-    { key: 'mileage', label: '적립 마일리지', render: (row) => numberFormatter.format(row.mileage) },
+    { key: 'totalAmount', label: '최종 금액', render: () => '-' },
+    { key: 'mileage', label: '적립 마일리지', render: () => '-' },
     { key: 'joinedAt', label: '가입일자', render: (row) => formatDate(row.joinedAt) },
     {
       key: 'actions',
@@ -44,52 +44,45 @@ function getColumns(
   ]
 }
 
-type DriverFilterCriteria = {
-  affiliation: string
-  dateRange: DateRange
-  nameQuery: string
-}
-
-function getFilteredDrivers(
-  drivers: readonly DriverData[],
-  { affiliation, dateRange, nameQuery }: DriverFilterCriteria,
-) {
-  const normalizedNameQuery = nameQuery.trim().toLocaleLowerCase('ko-KR')
-  const filteredDrivers: DriverData[] = []
-
-  for (const driver of drivers) {
-    if (driver.joinedAt < dateRange.start || driver.joinedAt > dateRange.end) continue
-    if (affiliation && driver.affiliation !== affiliation) continue
-    if (normalizedNameQuery && !driver.name.toLocaleLowerCase('ko-KR').includes(normalizedNameQuery)) {
-      continue
-    }
-
-    filteredDrivers.push(driver)
-  }
-
-  return filteredDrivers
-}
-
 export function DriverDataPage() {
-  const [drivers, setDrivers] = useState(createDriverMockData)
+  const [drivers, setDrivers] = useState<Driver[] | null>(null)
+  const [affiliations, setAffiliations] = useState<{ value: string; label: string }[] | null>(null)
+  const [loadError, setLoadError] = useState('')
+  const [affiliationError, setAffiliationError] = useState('')
+  const [withdrawalError, setWithdrawalError] = useState('')
   const [dateRange, setDateRange] = useState(getDefaultDateRange)
   const [nameQuery, setNameQuery] = useState('')
   const [selectedAffiliation, setSelectedAffiliation] = useState('')
-  const [withdrawalTarget, setWithdrawalTarget] = useState<DriverData | null>(null)
-  const affiliations = Array.from(new Set(drivers.map((driver) => driver.affiliation)))
-  const filteredDrivers = getFilteredDrivers(drivers, {
-    affiliation: selectedAffiliation,
-    dateRange,
-    nameQuery,
-  })
+  const [withdrawalTarget, setWithdrawalTarget] = useState<Driver | null>(null)
+  useEffect(() => {
+    let active = true
+    void getDrivers().then((allDrivers) => {
+      if (!active) return
+      setAffiliations(Array.from(new Map(allDrivers.map((driver) => [driver.logisticsCompanyId,
+        { value: driver.logisticsCompanyId, label: driver.logisticsCompanyName }])).values()))
+    }).catch((error: unknown) => {
+      if (!active) return
+      if (isInvalidAdminSession(error)) window.location.hash = '/login'
+      else setAffiliationError(DRIVERS_LOAD_ERROR)
+    })
+    return () => { active = false }
+  }, [])
+  useEffect(() => {
+    let active = true
+    setDrivers(null)
+    setLoadError('')
+    void getDrivers({ dateRange, nameQuery, logisticsCompanyId: selectedAffiliation }).then((loaded) => {
+      if (active) setDrivers(loaded)
+    }).catch((error: unknown) => {
+      if (!active) return
+      if (isInvalidAdminSession(error)) window.location.hash = '/login'
+      else setLoadError(DRIVERS_LOAD_ERROR)
+    })
+    return () => { active = false }
+  }, [dateRange, nameQuery, selectedAffiliation])
 
   function handleWithdraw() {
-    if (!withdrawalTarget) return
-
-    setDrivers((currentDrivers) => (
-      currentDrivers.filter((driver) => driver.id !== withdrawalTarget.id)
-    ))
-    setWithdrawalTarget(null)
+    setWithdrawalError('기사 탈퇴 서버 연동이 필요합니다.')
   }
 
   return (
@@ -101,18 +94,19 @@ export function DriverDataPage() {
           value={nameQuery}
           onChange={setNameQuery}
         />
-        <AffiliationFilter options={affiliations} onChange={setSelectedAffiliation} />
+        <AffiliationFilter options={affiliations ?? []} value={selectedAffiliation} onChange={setSelectedAffiliation} />
       </DataPageHeader>
       <DataTable
-        columns={getColumns(setWithdrawalTarget)}
-        emptyMessage="조회 조건에 맞는 기사 데이터가 없습니다."
-        rows={filteredDrivers}
+        columns={getColumns((driver) => { setWithdrawalError(''); setWithdrawalTarget(driver) })}
+        emptyMessage={loadError || affiliationError || (drivers === null || affiliations === null
+          ? '기사 데이터를 불러오는 중입니다.' : '조회 조건에 맞는 기사 데이터가 없습니다.')}
+        rows={affiliations && !affiliationError ? drivers ?? [] : []}
         getRowKey={(row) => row.id}
       />
       {withdrawalTarget ? (
         <ConfirmationDialog
           actionLabel="탈퇴"
-          description="탈퇴한 회원 정보는 다시 복구할 수 없습니다."
+          description={withdrawalError || '탈퇴한 회원 정보는 다시 복구할 수 없습니다.'}
           onCancel={() => setWithdrawalTarget(null)}
           onConfirm={handleWithdraw}
           title="회원을 탈퇴시키겠습니까?"
