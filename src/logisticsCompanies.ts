@@ -49,3 +49,7 @@ export async function saveLogisticsCompany(values: LogisticsFormValues, id?: str
     throw error
   }
 }
+
+export async function deactivateLogisticsCompany(id: string): Promise<void> {
+  await requestAdmin(`logistics-companies/${encodeURIComponent(id)}`, { method: 'DELETE', status: 204 })
+}

@@ -77,7 +77,7 @@ function mount(kind = 'list', id = 'a') {
     },
     changeId(id) { props = { id }; return page.render() },
     unmount() { slots.forEach((slot) => slot?.cleanup?.()) },
-    async respond(index, status, data) { calls[index].resolve(Response.json(data, { status })); await tick() },
+    async respond(index, status, data) { calls[index].resolve(status === 204 ? new Response(null, { status }) : Response.json(data, { status })); await tick() },
   }
   page.render()
   return page
@@ -261,4 +261,123 @@ test('existing field validation prevents invalid input from reaching the write A
   await submit(page)
   assert.equal(page.calls.length, 0)
   assert.equal(find(page.render(), 'p').props.children, '사업자명을 입력해주세요.')
+})
+
+
+async function loadedCompanies() {
+  const page = mount()
+  await page.respond(0, 200, [company('a', 'Alpha'), company('b', 'Beta')])
+  return page
+}
+function table(page) { return find(page.render(), 'DataTable').props }
+function openDeactivate(page, id = 'a') {
+  const row = table(page).rows.find((row) => row.id === id)
+  find(table(page).columns.find(({ key }) => key === 'actions').render(row), 'button').props.onClick()
+  return find(page.render(), 'ConfirmationDialog').props
+}
+
+test('deactivation explains preserved records, supports cancel, and waits for 204 with duplicate protection', async () => {
+  const page = await loadedCompanies()
+  const cancelled = openDeactivate(page)
+  assert.equal(cancelled.actionLabel, '비활성화')
+  assert.equal(cancelled.title, '물류사를 비활성화하시겠습니까?')
+  assert.match(cancelled.description, /기록은 보존/)
+  assert.match(cancelled.description, /로그인과 기존 세션 이용이 차단/)
+  cancelled.onCancel()
+  assert.equal(page.calls.length, 1)
+  const dialog = openDeactivate(page)
+  const pending = dialog.onConfirm()
+  await dialog.onConfirm()
+  assert.equal(page.calls.length, 2)
+  assert.equal(page.calls[1].url, '/api/v1/admin/logistics-companies/a')
+  assert.equal(page.calls[1].options.method, 'DELETE')
+  assert.equal(page.calls[1].options.body, undefined)
+  assert.equal(page.calls[1].options.credentials, 'include')
+  assert.equal(table(page).rows.length, 2)
+  find(page.render(), 'SearchFilter').props.onChange('Beta')
+  await page.respond(1, 204)
+  await pending
+  assert.equal(find(page.render(), 'ConfirmationDialog'), undefined)
+  assert.equal(find(page.render(), 'SearchFilter').props.value, 'Beta')
+  assert.equal(page.calls[2].url, '/api/v1/admin/logistics-companies')
+  await page.respond(2, 200, [company('b', 'Beta')])
+  assert.deepEqual(table(page).rows.map(({ id }) => id), ['b'])
+})
+
+test('failed deactivation keeps real rows and offers retry in the existing modal', async () => {
+  for (const status of [404, 500, 200]) {
+    const page = await loadedCompanies()
+    const pending = openDeactivate(page).onConfirm()
+    await page.respond(1, status, status === 404 ? { code: 'LOGISTICS_COMPANY_NOT_FOUND' } : {})
+    await pending
+    assert.equal(table(page).rows.length, 2)
+    assert.match(find(page.render(), 'ConfirmationDialog').props.description,
+      status === 404 ? /찾을 수 없습니다/ : /비활성화 중 오류/)
+    const retry = find(page.render(), 'ConfirmationDialog').props.onConfirm()
+    await page.respond(2, 204)
+    await retry
+    assert.equal(find(page.render(), 'ConfirmationDialog'), undefined)
+  }
+  const offline = await loadedCompanies()
+  const pending = openDeactivate(offline).onConfirm()
+  offline.calls[1].reject(new TypeError('offline'))
+  await pending
+  assert.equal(table(offline).rows.length, 2)
+  assert.match(find(offline.render(), 'ConfirmationDialog').props.description, /비활성화 중 오류/)
+})
+
+test('cancelled requests refresh without overwriting the next target and stale refreshes cannot restore inactive rows', async () => {
+  const page = await loadedCompanies()
+  const first = openDeactivate(page)
+  const pending = first.onConfirm()
+  first.onCancel()
+  const next = openDeactivate(page, 'b')
+  await next.onConfirm()
+  assert.equal(page.calls.length, 2)
+  await page.respond(1, 204)
+  await pending
+  assert.match(find(page.render(), 'ConfirmationDialog').props.description, /기록은 보존/)
+  assert.equal(page.calls[2].options.method, 'GET')
+  const secondPending = find(page.render(), 'ConfirmationDialog').props.onConfirm()
+  assert.equal(page.calls[3].url, '/api/v1/admin/logistics-companies/b')
+  await page.respond(3, 204)
+  await secondPending
+  page.render()
+  await page.respond(4, 200, [])
+  await page.respond(2, 200, [company('b', 'Beta')])
+  assert.deepEqual(table(page).rows, [])
+  assert.equal(find(page.render(), 'ConfirmationDialog'), undefined)
+})
+
+test('cancelled deactivation failure refreshes uncertain server state without showing an old error', async () => {
+  const page = await loadedCompanies()
+  const dialog = openDeactivate(page)
+  const pending = dialog.onConfirm()
+  dialog.onCancel()
+  openDeactivate(page, 'b')
+  page.calls[1].reject(new TypeError('connection lost'))
+  await pending
+  assert.match(find(page.render(), 'ConfirmationDialog').props.description, /기록은 보존/)
+  assert.equal(page.calls[2].options.method, 'GET')
+  await page.respond(2, 200, [company('a'), company('b')])
+  assert.equal(table(page).rows.length, 2)
+})
+
+test('late deactivation responses after leaving cannot refresh or redirect; current 401 still redirects', async () => {
+  for (const status of [204, 401, 500]) {
+    const page = await loadedCompanies()
+    const pending = openDeactivate(page).onConfirm()
+    page.unmount()
+    page.window.location.hash = '#/drivers'
+    await page.respond(1, status, status === 204 ? undefined : { code: 'INVALID_ADMIN_SESSION' })
+    await pending
+    assert.equal(page.window.location.hash, '#/drivers')
+    assert.equal(page.calls.length, 2)
+  }
+  const current = await loadedCompanies()
+  const pending = openDeactivate(current).onConfirm()
+  await current.respond(1, 401, { code: 'INVALID_ADMIN_SESSION' })
+  await pending
+  assert.equal(current.window.location.hash, '/login')
+  assert.equal(table(current).rows.length, 2)
 })

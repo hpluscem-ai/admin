@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
-import { isInvalidAdminSession } from '../adminAuth'
-import { getLogisticsCompanies, LOGISTICS_LOAD_ERROR, type LogisticsCompany } from '../logisticsCompanies'
+import { useEffect, useRef, useState } from 'react'
+import { AdminApiError, isInvalidAdminSession } from '../adminAuth'
+import { getLogisticsCompanies, deactivateLogisticsCompany, LOGISTICS_LOAD_ERROR, type LogisticsCompany } from '../logisticsCompanies'
 import calendarIcon from '../assets/calendar.svg'
 import packageIcon from '../assets/package.svg'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
@@ -45,7 +45,7 @@ function MonthFilter({ onChange, value }: MonthFilterProps) {
 }
 
 function getColumns(
-  onDelete: (settlement: LogisticsCompany) => void,
+  onDeactivate: (settlement: LogisticsCompany) => void,
 ): readonly DataTableColumn<LogisticsCompany>[] {
   return [
     { key: 'businessName', label: '사업자명', render: (row) => row.businessName },
@@ -70,12 +70,12 @@ function getColumns(
             수정
           </a>
           <button
-            aria-label={`${row.businessName} 삭제`}
+            aria-label={`${row.businessName} 비활성화`}
             className="table-action table-action--danger"
-            onClick={() => onDelete(row)}
+            onClick={() => onDeactivate(row)}
             type="button"
           >
-            삭제
+            비활성화
           </button>
         </span>
       ),
@@ -88,24 +88,76 @@ export function LogisticsSettlementPage() {
   const [loadError, setLoadError] = useState('')
   const [businessNameQuery, setBusinessNameQuery] = useState('')
   const [selectedMonth, setSelectedMonth] = useState(toMonthValue)
-  const [deleteTarget, setDeleteTarget] = useState<LogisticsCompany | null>(null)
+  const [deactivationTarget, setDeactivationTarget] = useState<LogisticsCompany | null>(null)
+  const [deactivationError, setDeactivationError] = useState('')
+  const [refresh, setRefresh] = useState(0)
+  const lifetime = useRef<object | null>(null)
+  const modalOwner = useRef<object | null>(null)
+  const loadOwner = useRef<object | null>(null)
+  const submitting = useRef(false)
   useEffect(() => {
-    let active = true
+    lifetime.current = {}
+    return () => { lifetime.current = null }
+  }, [])
+  useEffect(() => {
+    const current = {}
+    loadOwner.current = current
+    setCompanies(null)
+    setLoadError('')
     void getLogisticsCompanies().then((loaded) => {
-      if (active) setCompanies(loaded)
+      if (loadOwner.current === current) setCompanies(loaded)
     }).catch((error: unknown) => {
-      if (!active) return
+      if (loadOwner.current !== current) return
       if (isInvalidAdminSession(error)) {
         window.location.hash = '/login'
         return
       }
       setLoadError(LOGISTICS_LOAD_ERROR)
     })
-    return () => { active = false }
-  }, [])
+    return () => { loadOwner.current = null }
+  }, [refresh])
   const query = businessNameQuery.trim().toLocaleLowerCase('ko-KR')
   const filteredCompanies = (companies ?? []).filter((company) =>
     company.businessName.toLocaleLowerCase('ko-KR').includes(query))
+
+  async function handleDeactivate() {
+    if (!deactivationTarget || submitting.current || !lifetime.current) return
+    const owner = lifetime.current
+    const targetOwner = modalOwner.current
+    const targetId = deactivationTarget.id
+    const hash = window.location.hash
+    const isCurrent = () => lifetime.current === owner && window.location.hash === hash
+    submitting.current = true
+    setDeactivationError('')
+    try {
+      await deactivateLogisticsCompany(targetId)
+      if (!isCurrent()) return
+      loadOwner.current = null
+      setCompanies((current) => current?.filter(({ id }) => id !== targetId) ?? null)
+      setRefresh((current) => current + 1)
+      if (modalOwner.current === targetOwner) {
+        modalOwner.current = null
+        setDeactivationTarget(null)
+      }
+    } catch (error) {
+      if (!isCurrent()) return
+      if (isInvalidAdminSession(error)) {
+        window.location.hash = '/login'
+        return
+      }
+      if (modalOwner.current === targetOwner) {
+        setDeactivationError(error instanceof AdminApiError && error.status === 404
+          ? '물류사를 찾을 수 없습니다.'
+          : '물류사 비활성화 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.')
+      } else {
+        // Closing the dialog does not cancel the server operation.
+        loadOwner.current = null
+        setRefresh((current) => current + 1)
+      }
+    } finally {
+      submitting.current = false
+    }
+  }
 
   return (
     <section className="data-page settlement-page" aria-labelledby="logistics-settlement-title">
@@ -119,7 +171,7 @@ export function LogisticsSettlementPage() {
         <MonthFilter onChange={setSelectedMonth} value={selectedMonth} />
       </DataPageHeader>
       <DataTable
-        columns={getColumns(setDeleteTarget)}
+        columns={getColumns((company) => { modalOwner.current = {}; setDeactivationError(''); setDeactivationTarget(company) })}
         emptyMessage={loadError || (companies === null ? '물류사 데이터를 불러오는 중입니다.' : '물류사 데이터가 없습니다.')}
         getRowKey={(row) => row.id}
         rows={filteredCompanies}
@@ -141,13 +193,13 @@ export function LogisticsSettlementPage() {
         </a>
       </div>
 
-      {deleteTarget ? (
+      {deactivationTarget ? (
         <ConfirmationDialog
-          actionLabel="삭제"
-          description="물류사 정보를 삭제하면 소속 기사 및 마일리지 데이터 또한 복구하실 수 없습니다."
-          onCancel={() => setDeleteTarget(null)}
-          onConfirm={() => setDeleteTarget(null)}
-          title="물류사 정보를 삭제하시겠습니까?"
+          actionLabel="비활성화"
+          description={deactivationError || '물류사와 소속 기사·마일리지 기록은 보존되며, 소속 기사의 로그인과 기존 세션 이용이 차단됩니다.'}
+          onCancel={() => { modalOwner.current = null; setDeactivationTarget(null) }}
+          onConfirm={handleDeactivate}
+          title="물류사를 비활성화하시겠습니까?"
         />
       ) : null}
     </section>
