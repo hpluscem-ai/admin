@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
-import { AdminApiError, getCurrentAdmin, loginAdmin } from './adminAuth'
+import { AdminApiError, getCurrentAdmin, isInvalidAdminSession, loginAdmin } from './adminAuth'
 import './App.css'
 import { AdminLayout } from './components/AdminLayout'
 import { getInfrastructureMockDataById } from './data/infrastructureMockData'
-import { getLogisticsSettlementMockDataById } from './data/logisticsSettlementMockData'
 import { DashboardPage } from './pages/DashboardPage'
 import { DriverDataPage } from './pages/DriverDataPage'
 import { ErdPage } from './pages/ErdPage'
@@ -70,7 +69,7 @@ function App() {
       if (!path || path === '/login') window.location.hash = '/dashboard'
     }).catch((error: unknown) => {
       if (activeRequest.current !== current) return
-      const invalid = error instanceof AdminApiError && error.status === 401 && error.code === 'INVALID_ADMIN_SESSION'
+      const invalid = isInvalidAdminSession(error)
       setSession({ path, status: invalid ? 'signedOut' : 'error' })
     })
     return () => { activeRequest.current = null }
@@ -116,15 +115,9 @@ function App() {
   const logisticsEditId = getRouteId(path, logisticsEditRoutePrefix)
 
   if (logisticsEditId !== undefined) {
-    const initialValues = getLogisticsSettlementMockDataById(logisticsEditId)
-
     return (
       <AdminLayout activeMenu="물류사 정산 관리">
-        {initialValues ? (
-          <LogisticsEditPage key={logisticsEditId} initialValues={initialValues} />
-        ) : (
-          <LogisticsSettlementPage />
-        )}
+        <LogisticsEditPage key={logisticsEditId} id={logisticsEditId} />
       </AdminLayout>
     )
   }

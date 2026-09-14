@@ -13,8 +13,8 @@ export class AdminApiError extends Error {
   }
 }
 
-async function request(path: string, credentials?: AdminLoginCredentials): Promise<unknown> {
-  const response = await fetch(`/api/v1/admin/auth/${path}`, {
+export async function requestAdmin(path: string, credentials?: AdminLoginCredentials): Promise<unknown> {
+  const response = await fetch(`/api/v1/admin/${path}`, {
     method: credentials ? 'POST' : 'GET',
     credentials: 'include',
     cache: 'no-store',
@@ -34,7 +34,7 @@ async function request(path: string, credentials?: AdminLoginCredentials): Promi
 }
 
 export async function getCurrentAdmin(): Promise<AdminUser> {
-  const data = await request('me')
+  const data = await requestAdmin('auth/me')
   if (typeof data !== 'object' || data === null) throw new Error('Invalid administrator response')
   const { id, email, name } = data as Record<string, unknown>
   if (typeof id !== 'string' || !id.trim() || typeof email !== 'string' || !email.trim() ||
@@ -43,10 +43,14 @@ export async function getCurrentAdmin(): Promise<AdminUser> {
 }
 
 export async function loginAdmin(credentials: AdminLoginCredentials): Promise<AdminUser> {
-  const data = await request('web/login', credentials)
+  const data = await requestAdmin('auth/web/login', credentials)
   if (typeof data !== 'object' || data === null || !('expiresAt' in data) ||
     typeof data.expiresAt !== 'string' || !Number.isFinite(Date.parse(data.expiresAt))) {
     throw new Error('Invalid administrator login response')
   }
   return getCurrentAdmin()
+}
+
+export function isInvalidAdminSession(error: unknown): boolean {
+  return error instanceof AdminApiError && error.status === 401 && error.code === 'INVALID_ADMIN_SESSION'
 }

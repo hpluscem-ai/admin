@@ -1,16 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { isInvalidAdminSession } from '../adminAuth'
+import { getLogisticsCompanies, LOGISTICS_LOAD_ERROR, type LogisticsCompany } from '../logisticsCompanies'
 import calendarIcon from '../assets/calendar.svg'
 import packageIcon from '../assets/package.svg'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { DataPageHeader } from '../components/DataPageHeader'
 import { DataTable, type DataTableColumn } from '../components/DataTable'
 import { SearchFilter } from '../components/PageFilters'
-import {
-  createLogisticsSettlementMockData,
-  type LogisticsSettlementData,
-} from '../data/logisticsSettlementMockData'
-
-const numberFormatter = new Intl.NumberFormat('ko-KR')
 
 function toMonthValue(date = new Date()) {
   const year = date.getFullYear()
@@ -48,26 +44,9 @@ function MonthFilter({ onChange, value }: MonthFilterProps) {
   )
 }
 
-type SettlementFilterCriteria = {
-  businessNameQuery: string
-  settlementMonth: string
-}
-
-function getFilteredSettlements(
-  settlements: readonly LogisticsSettlementData[],
-  { businessNameQuery, settlementMonth }: SettlementFilterCriteria,
-) {
-  const normalizedQuery = businessNameQuery.trim().toLocaleLowerCase('ko-KR')
-
-  return settlements.filter((settlement) => (
-    settlement.settlementMonth === settlementMonth &&
-    (!normalizedQuery || settlement.businessName.toLocaleLowerCase('ko-KR').includes(normalizedQuery))
-  ))
-}
-
 function getColumns(
-  onDelete: (settlement: LogisticsSettlementData) => void,
-): readonly DataTableColumn<LogisticsSettlementData>[] {
+  onDelete: (settlement: LogisticsCompany) => void,
+): readonly DataTableColumn<LogisticsCompany>[] {
   return [
     { key: 'businessName', label: '사업자명', render: (row) => row.businessName },
     { key: 'businessNumber', label: '사업자번호', render: (row) => row.businessNumber },
@@ -76,8 +55,8 @@ function getColumns(
     { key: 'accountNumber', label: '계좌번호', render: (row) => row.accountNumber },
     { key: 'bank', label: '은행', render: (row) => row.bank },
     { key: 'accountHolder', label: '예금주', render: (row) => row.accountHolder },
-    { key: 'mileage', label: '적립 마일리지', render: (row) => numberFormatter.format(row.mileage) },
-    { key: 'transferStatus', label: '이체 상태', render: (row) => row.transferStatus },
+    { key: 'mileage', label: '적립 마일리지', render: () => '-' },
+    { key: 'transferStatus', label: '이체 상태', render: () => '-' },
     {
       key: 'actions',
       label: '관리',
@@ -105,14 +84,28 @@ function getColumns(
 }
 
 export function LogisticsSettlementPage() {
-  const [settlements] = useState(createLogisticsSettlementMockData)
+  const [companies, setCompanies] = useState<LogisticsCompany[] | null>(null)
+  const [loadError, setLoadError] = useState('')
   const [businessNameQuery, setBusinessNameQuery] = useState('')
   const [selectedMonth, setSelectedMonth] = useState(toMonthValue)
-  const [deleteTarget, setDeleteTarget] = useState<LogisticsSettlementData | null>(null)
-  const filteredSettlements = getFilteredSettlements(settlements, {
-    businessNameQuery,
-    settlementMonth: selectedMonth,
-  })
+  const [deleteTarget, setDeleteTarget] = useState<LogisticsCompany | null>(null)
+  useEffect(() => {
+    let active = true
+    void getLogisticsCompanies().then((loaded) => {
+      if (active) setCompanies(loaded)
+    }).catch((error: unknown) => {
+      if (!active) return
+      if (isInvalidAdminSession(error)) {
+        window.location.hash = '/login'
+        return
+      }
+      setLoadError(LOGISTICS_LOAD_ERROR)
+    })
+    return () => { active = false }
+  }, [])
+  const query = businessNameQuery.trim().toLocaleLowerCase('ko-KR')
+  const filteredCompanies = (companies ?? []).filter((company) =>
+    company.businessName.toLocaleLowerCase('ko-KR').includes(query))
 
   return (
     <section className="data-page settlement-page" aria-labelledby="logistics-settlement-title">
@@ -127,9 +120,9 @@ export function LogisticsSettlementPage() {
       </DataPageHeader>
       <DataTable
         columns={getColumns(setDeleteTarget)}
-        emptyMessage="물류사 데이터가 없습니다."
+        emptyMessage={loadError || (companies === null ? '물류사 데이터를 불러오는 중입니다.' : '물류사 데이터가 없습니다.')}
         getRowKey={(row) => row.id}
-        rows={filteredSettlements}
+        rows={filteredCompanies}
       />
 
       <div className="settlement-floating-actions">
