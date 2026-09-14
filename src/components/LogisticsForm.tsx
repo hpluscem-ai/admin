@@ -1,4 +1,6 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+
+import { isInvalidAdminSession } from '../adminAuth'
 
 import chevronDownIcon from '../assets/chevron-down.svg'
 import {
@@ -233,6 +235,13 @@ export function LogisticsForm({ actionLabel, initialValues, save }: LogisticsFor
   const [values, setValues] = useState(initialFormValues)
   const [errors, setErrors] = useState<LogisticsErrors>({})
   const [submitError, setSubmitError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const submitting = useRef(false)
+  const lifetime = useRef<object | null>(null)
+  useEffect(() => {
+    lifetime.current = {}
+    return () => { lifetime.current = null }
+  }, [])
 
   const hasAllValues = (
     fields.every(({ name }) => Boolean(values[name].trim())) &&
@@ -275,6 +284,7 @@ export function LogisticsForm({ actionLabel, initialValues, save }: LogisticsFor
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (submitting.current || !lifetime.current) return
 
     const nextErrors = getFormErrors(values)
     setErrors(nextErrors)
@@ -287,8 +297,14 @@ export function LogisticsForm({ actionLabel, initialValues, save }: LogisticsFor
       return
     }
 
+    const owner = lifetime.current
+    const hash = window.location.hash
+    const isCurrent = () => lifetime.current === owner && window.location.hash === hash
+    submitting.current = true
+    setSaving(true)
     try {
       const result = await save(values)
+      if (!isCurrent()) return
 
       if (!result.ok) {
         setSubmitError(result.message ?? '물류사 데이터를 저장하지 못했습니다.')
@@ -296,8 +312,18 @@ export function LogisticsForm({ actionLabel, initialValues, save }: LogisticsFor
       }
 
       window.location.hash = '/settlements'
-    } catch {
+    } catch (error) {
+      if (!isCurrent()) return
+      if (isInvalidAdminSession(error)) {
+        window.location.hash = '/login'
+        return
+      }
       setSubmitError('물류사 데이터 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.')
+    } finally {
+      if (isCurrent()) {
+        submitting.current = false
+        setSaving(false)
+      }
     }
   }
 
@@ -390,7 +416,7 @@ export function LogisticsForm({ actionLabel, initialValues, save }: LogisticsFor
           )
         })}
       </div>
-      <PrimaryButton disabled={!canSubmit} type="submit">
+      <PrimaryButton disabled={!canSubmit || saving} type="submit">
         {actionLabel}
       </PrimaryButton>
       {submitError ? (

@@ -1,5 +1,5 @@
-import { requestAdmin } from './adminAuth'
-import type { LogisticsFormValues } from './components/LogisticsForm'
+import { AdminApiError, requestAdmin } from './adminAuth'
+import type { LogisticsFormValues, LogisticsSaveResult } from './components/LogisticsForm'
 import { bankCodeOptions } from './data/bankCodeOptions'
 
 export type LogisticsCompany = LogisticsFormValues & { id: string }
@@ -26,4 +26,26 @@ export async function getLogisticsCompanies(): Promise<LogisticsCompany[]> {
 
 export async function getLogisticsCompany(id: string): Promise<LogisticsCompany> {
   return readCompany(await requestAdmin(`logistics-companies/${encodeURIComponent(id)}`))
+}
+
+export async function saveLogisticsCompany(values: LogisticsFormValues, id?: string): Promise<LogisticsSaveResult> {
+  const { businessName, businessNumber, corporateRegistrationNumber, businessAddress, managerName,
+    managerPhone, bankCode, accountNumber, accountHolder } = values
+  try {
+    readCompany(await requestAdmin(id ? `logistics-companies/${encodeURIComponent(id)}` : 'logistics-companies', {
+      method: id ? 'PUT' : 'POST', status: id ? 200 : 201,
+      body: { businessName, businessNumber, corporateRegistrationNumber, businessAddress, managerName,
+        managerPhone, bankCode, accountNumber, accountHolder },
+    }))
+    return { ok: true }
+  } catch (error) {
+    if (error instanceof AdminApiError) {
+      if (error.status === 409 && error.code === 'LOGISTICS_COMPANY_DUPLICATE') {
+        return { ok: false, message: '이미 등록된 사업자 정보입니다.' }
+      }
+      if (error.status === 404) return { ok: false, message: '물류사를 찾을 수 없습니다.' }
+      if (error.status === 400) return { ok: false, message: '입력한 물류사 정보를 확인해주세요.' }
+    }
+    throw error
+  }
 }

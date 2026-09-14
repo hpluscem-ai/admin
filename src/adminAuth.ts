@@ -13,19 +13,19 @@ export class AdminApiError extends Error {
   }
 }
 
-export async function requestAdmin(path: string, credentials?: AdminLoginCredentials): Promise<unknown> {
+export async function requestAdmin(path: string, options: { method?: 'GET' | 'POST' | 'PUT'; body?: unknown; status?: number } = {}): Promise<unknown> {
   const response = await fetch(`/api/v1/admin/${path}`, {
-    method: credentials ? 'POST' : 'GET',
+    method: options.method ?? 'GET',
     credentials: 'include',
     cache: 'no-store',
     signal: AbortSignal.timeout(15_000),
-    ...(credentials ? {
+    ...(options.body !== undefined ? {
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: credentials.email.trim(), password: credentials.password }),
+      body: JSON.stringify(options.body),
     } : {}),
   })
   const data: unknown = await response.json()
-  if (response.status !== 200) {
+  if (response.status !== (options.status ?? 200)) {
     throw new AdminApiError(response.status,
       typeof data === 'object' && data !== null && 'code' in data && typeof data.code === 'string'
         ? data.code : '')
@@ -43,7 +43,9 @@ export async function getCurrentAdmin(): Promise<AdminUser> {
 }
 
 export async function loginAdmin(credentials: AdminLoginCredentials): Promise<AdminUser> {
-  const data = await requestAdmin('auth/web/login', credentials)
+  const data = await requestAdmin('auth/web/login', {
+    method: 'POST', body: { email: credentials.email.trim(), password: credentials.password },
+  })
   if (typeof data !== 'object' || data === null || !('expiresAt' in data) ||
     typeof data.expiresAt !== 'string' || !Number.isFinite(Date.parse(data.expiresAt))) {
     throw new Error('Invalid administrator login response')

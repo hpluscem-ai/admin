@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AdminApiError, isInvalidAdminSession } from '../adminAuth'
-import { getLogisticsCompany, LOGISTICS_LOAD_ERROR, type LogisticsCompany } from '../logisticsCompanies'
+import { getLogisticsCompany, saveLogisticsCompany, LOGISTICS_LOAD_ERROR, type LogisticsCompany } from '../logisticsCompanies'
 import {
   LogisticsForm,
   type LogisticsFormValues,
@@ -41,7 +41,7 @@ type LogisticsCreatePageProps = {
   save?: SaveLogisticsData
 }
 
-export function LogisticsCreatePage({ save }: LogisticsCreatePageProps = {}) {
+export function LogisticsCreatePage({ save = saveLogisticsCompany }: LogisticsCreatePageProps = {}) {
   return (
     <LogisticsFormPage
       actionLabel="물류사 데이터 등록"
@@ -87,7 +87,7 @@ export function LogisticsEditPage({ id, save }: LogisticsEditPageProps) {
       actionLabel="물류사 데이터 수정"
       error={loadError}
       initialValues={company ?? undefined}
-      save={save}
+      save={save ?? ((values) => saveLogisticsCompany(values, id))}
       title="물류사 데이터 수정"
       titleId="logistics-edit-title"
     />
