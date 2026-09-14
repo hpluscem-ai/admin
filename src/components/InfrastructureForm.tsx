@@ -134,12 +134,7 @@ function formatFieldValue(name: keyof InfrastructureValues, value: string) {
 }
 
 function createInitialValues(initialValues: Partial<InfrastructureValues>) {
-  return Object.fromEntries(
-    Object.entries({ ...emptyValues, ...initialValues }).map(([name, value]) => [
-      name,
-      formatFieldValue(name as keyof InfrastructureValues, value),
-    ]),
-  ) as InfrastructureValues
+  return { ...emptyValues, ...initialValues }
 }
 
 function validateField(field: InfrastructureField, value: string) {

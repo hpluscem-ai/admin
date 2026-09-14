@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { AdminApiError, getCurrentAdmin, isInvalidAdminSession, loginAdmin } from './adminAuth'
 import './App.css'
 import { AdminLayout } from './components/AdminLayout'
-import { getInfrastructureMockDataById } from './data/infrastructureMockData'
 import { DashboardPage } from './pages/DashboardPage'
 import { DriverDataPage } from './pages/DriverDataPage'
 import { ErdPage } from './pages/ErdPage'
@@ -99,15 +98,9 @@ function App() {
   const infrastructureEditId = getRouteId(path, infrastructureEditRoutePrefix)
 
   if (infrastructureEditId !== undefined) {
-    const initialValues = getInfrastructureMockDataById(infrastructureEditId)
-
     return (
       <AdminLayout activeMenu="인프라 데이터 목록">
-        {initialValues ? (
-          <InfrastructureEditPage key={infrastructureEditId} initialValues={initialValues} />
-        ) : (
-          <InfrastructureDataPage />
-        )}
+        <InfrastructureEditPage key={infrastructureEditId} id={infrastructureEditId} />
       </AdminLayout>
     )
   }

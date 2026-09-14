@@ -1,5 +1,5 @@
 import { requestAdmin } from './adminAuth'
-import type { DateRange } from './utils/dateRange'
+import { getDateRangeParams, type DateRange } from './utils/dateRange'
 
 export type Driver = {
   id: string
@@ -15,13 +15,8 @@ export const DRIVERS_LOAD_ERROR = '기사 데이터를 불러오지 못했습니
 type DriverQuery = { dateRange: DateRange; nameQuery: string; logisticsCompanyId: string }
 
 export async function getDrivers(query?: DriverQuery): Promise<Driver[]> {
-  const params = new URLSearchParams()
+  const params = query ? getDateRangeParams(query.dateRange) : new URLSearchParams()
   if (query) {
-    const start = new Date(`${query.dateRange.start}T00:00:00`)
-    const before = new Date(`${query.dateRange.end}T00:00:00`)
-    before.setDate(before.getDate() + 1)
-    params.set('createdFrom', start.toISOString())
-    params.set('createdBefore', before.toISOString())
     if (query.nameQuery.trim()) params.set('nameQuery', query.nameQuery.trim())
     if (query.logisticsCompanyId) params.set('logisticsCompanyId', query.logisticsCompanyId)
   }

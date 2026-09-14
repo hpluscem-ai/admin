@@ -25,3 +25,10 @@ export function getDefaultDateRange(referenceDate = new Date()): DateRange {
     end: toDateValue(referenceDate),
   }
 }
+
+export function getDateRangeParams(range: DateRange): URLSearchParams {
+  const start = new Date(`${range.start}T00:00:00`)
+  const before = new Date(`${range.end}T00:00:00`)
+  before.setDate(before.getDate() + 1)
+  return new URLSearchParams({ createdFrom: start.toISOString(), createdBefore: before.toISOString() })
+}

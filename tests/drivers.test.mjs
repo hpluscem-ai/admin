@@ -52,7 +52,7 @@ function mount() {
     return exports
   }
   imports['./adminAuth'] = imports['../adminAuth'] = load('adminAuth.ts')
-  imports['../utils/dateRange'] = load('utils/dateRange.ts')
+  imports['./utils/dateRange'] = imports['../utils/dateRange'] = load('utils/dateRange.ts')
   imports['../drivers'] = load('drivers.ts')
   const filters = load('components/PageFilters.tsx')
   imports['../components/PageFilters'] = { AffiliationFilter: 'AffiliationFilter', SearchFilter: 'SearchFilter', DateRangeFilter: 'DateRangeFilter' }

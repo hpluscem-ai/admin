@@ -1,18 +1,19 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { DataPageHeader } from '../components/DataPageHeader'
 import { DataTable, type DataTableColumn } from '../components/DataTable'
 import { DateRangeFilter, SearchFilter } from '../components/PageFilters'
-import {
-  createInfrastructureMockData,
-  type InfrastructureData,
-} from '../data/infrastructureMockData'
-import { getDefaultDateRange, type DateRange } from '../utils/dateRange'
+import { isInvalidAdminSession } from '../adminAuth'
+import { getStations, getStationValues, STATIONS_LOAD_ERROR, type Station } from '../stations'
+import { getDefaultDateRange } from '../utils/dateRange'
 import packageIcon from '../assets/package.svg'
 
 function formatDate(value: string) {
-  return value.split('-').join('. ')
+  const date = new Date(value)
+  return `${date.getFullYear()}. ${String(date.getMonth() + 1).padStart(2, '0')}. ${String(date.getDate()).padStart(2, '0')}`
 }
+
+type InfrastructureData = ReturnType<typeof getStationValues> & { id: string; registeredAt: string }
 
 function getColumns(
   onDelete: (infrastructure: InfrastructureData) => void,
@@ -20,12 +21,12 @@ function getColumns(
   return [
     { key: 'station', label: '주유소 이름', render: (row) => row.station },
     { key: 'pole', label: 'Pole', render: (row) => row.pole },
-    { key: 'model', label: '모델명', render: (row) => row.model },
-    { key: 'capacity', label: '용량', render: (row) => row.capacity },
+    { key: 'model', label: '모델명', render: (row) => row.model || '-' },
+    { key: 'capacity', label: '용량', render: (row) => row.capacity || '-' },
     { key: 'address', label: '주소', render: (row) => row.address },
-    { key: 'note', label: '비고', render: (row) => row.note },
-    { key: 'latitude', label: '위도', render: (row) => row.latitude },
-    { key: 'longitude', label: '경도', render: (row) => row.longitude },
+    { key: 'note', label: '비고', render: (row) => row.note || '-' },
+    { key: 'latitude', label: '위도', render: (row) => row.latitude || '-' },
+    { key: 'longitude', label: '경도', render: (row) => row.longitude || '-' },
     { key: 'registeredAt', label: '등록일자', render: (row) => formatDate(row.registeredAt) },
     {
       key: 'actions',
@@ -53,55 +54,32 @@ function getColumns(
   ]
 }
 
-type InfrastructureFilterCriteria = {
-  dateRange: DateRange
-  stationQuery: string
-}
-
-function getFilteredInfrastructureData(
-  infrastructureData: readonly InfrastructureData[],
-  { dateRange, stationQuery }: InfrastructureFilterCriteria,
-) {
-  const normalizedStationQuery = stationQuery.trim().toLocaleLowerCase('ko-KR')
-  const filteredInfrastructureData: InfrastructureData[] = []
-
-  for (const infrastructure of infrastructureData) {
-    if (
-      infrastructure.registeredAt < dateRange.start ||
-      infrastructure.registeredAt > dateRange.end
-    ) {
-      continue
-    }
-    if (
-      normalizedStationQuery &&
-      !infrastructure.station.toLocaleLowerCase('ko-KR').includes(normalizedStationQuery)
-    ) {
-      continue
-    }
-
-    filteredInfrastructureData.push(infrastructure)
-  }
-
-  return filteredInfrastructureData
-}
-
 export function InfrastructureDataPage() {
-  const [infrastructureData, setInfrastructureData] = useState(createInfrastructureMockData)
+  const [stations, setStations] = useState<Station[] | null>(null)
+  const [loadError, setLoadError] = useState('')
+  const [deleteError, setDeleteError] = useState('')
   const [dateRange, setDateRange] = useState(getDefaultDateRange)
   const [stationQuery, setStationQuery] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<InfrastructureData | null>(null)
-  const filteredInfrastructureData = getFilteredInfrastructureData(infrastructureData, {
-    dateRange,
-    stationQuery,
-  })
+  useEffect(() => {
+    let active = true
+    setStations(null)
+    setLoadError('')
+    void getStations(dateRange, stationQuery).then((loaded) => {
+      if (active) setStations(loaded)
+    }).catch((error: unknown) => {
+      if (!active) return
+      if (isInvalidAdminSession(error)) window.location.hash = '/login'
+      else setLoadError(STATIONS_LOAD_ERROR)
+    })
+    return () => { active = false }
+  }, [dateRange, stationQuery])
+  const rows = (stations ?? []).map((station) => ({
+    ...getStationValues(station), id: station.id, registeredAt: station.createdAt,
+  }))
 
   function handleDelete() {
-    if (!deleteTarget) return
-
-    setInfrastructureData((currentInfrastructureData) => (
-      currentInfrastructureData.filter((infrastructure) => infrastructure.id !== deleteTarget.id)
-    ))
-    setDeleteTarget(null)
+    setDeleteError('인프라 데이터 삭제 서버 연동이 필요합니다.')
   }
 
   return (
@@ -116,9 +94,9 @@ export function InfrastructureDataPage() {
         />
       </DataPageHeader>
       <DataTable
-        columns={getColumns(setDeleteTarget)}
-        emptyMessage="조회 조건에 맞는 인프라 데이터가 없습니다."
-        rows={filteredInfrastructureData}
+        columns={getColumns((row) => { setDeleteError(''); setDeleteTarget(row) })}
+        emptyMessage={loadError || (stations === null ? '인프라 데이터를 불러오는 중입니다.' : '조회 조건에 맞는 인프라 데이터가 없습니다.')}
+        rows={rows}
         getRowKey={(row) => row.id}
       />
       <a className="floating-action" href="#/infrastructure/new">
@@ -128,7 +106,7 @@ export function InfrastructureDataPage() {
       {deleteTarget ? (
         <ConfirmationDialog
           actionLabel="삭제"
-          description="삭제한 인프라 데이터는 다시 복구할 수 없습니다."
+          description={deleteError || '삭제한 인프라 데이터는 다시 복구할 수 없습니다.'}
           onCancel={() => setDeleteTarget(null)}
           onConfirm={handleDelete}
           title="인프라 데이터를 삭제하시겠습니까?"
