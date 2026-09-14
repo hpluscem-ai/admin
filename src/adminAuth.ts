@@ -13,7 +13,7 @@ export class AdminApiError extends Error {
   }
 }
 
-export async function requestAdmin(path: string, options: { method?: 'GET' | 'POST' | 'PUT'; body?: unknown; status?: number } = {}): Promise<unknown> {
+export async function requestAdmin(path: string, options: { method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown; status?: number } = {}): Promise<unknown> {
   const response = await fetch(`/api/v1/admin/${path}`, {
     method: options.method ?? 'GET',
     credentials: 'include',
@@ -24,7 +24,7 @@ export async function requestAdmin(path: string, options: { method?: 'GET' | 'PO
       body: JSON.stringify(options.body),
     } : {}),
   })
-  const data: unknown = await response.json()
+  const data: unknown = response.status === 204 ? undefined : await response.json()
   if (response.status !== (options.status ?? 200)) {
     throw new AdminApiError(response.status,
       typeof data === 'object' && data !== null && 'code' in data && typeof data.code === 'string'

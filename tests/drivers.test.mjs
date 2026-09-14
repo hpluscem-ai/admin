@@ -23,6 +23,7 @@ function mount() {
   const window = { location: { hash: '#/drivers' } }
   let index = 0
   const react = {
+    useRef(initial) { const key = index++; if (!(key in slots)) slots[key] = { current: initial }; return slots[key] },
     useState(initial) {
       const key = index++
       if (!(key in slots)) slots[key] = typeof initial === 'function' ? initial() : initial
@@ -63,7 +64,7 @@ function mount() {
     table() { return find(page.render(), 'DataTable').props },
     change(type, value) { find(page.render(), type).props.onChange(value); page.render() },
     unmount() { slots.forEach((slot) => slot?.cleanup?.()) },
-    async respond(index, status, data) { calls[index].resolve(Response.json(data, { status })); await tick() },
+    async respond(index, status, data) { calls[index].resolve(status === 204 ? new Response(null, { status }) : Response.json(data, { status })); await tick() },
   }
   page.render()
   return page
@@ -153,17 +154,6 @@ test('current 401 redirects, but responses after leaving the page do not', async
   }
 })
 
-test('withdraw confirmation cannot remove real rows before the DELETE integration', async () => {
-  const page = mount()
-  await page.respond(0, 200, [driver('a')])
-  await page.respond(1, 200, [driver('a')])
-  page.table().columns.find((column) => column.key === 'actions').render(driver('a')).props.onClick()
-  find(page.render(), 'ConfirmationDialog').props.onConfirm()
-  assert.match(find(page.render(), 'ConfirmationDialog').props.description, /서버 연동이 필요/)
-  assert.equal(page.table().rows.length, 1)
-  assert.equal(page.calls.length, 2)
-})
-
 test('affiliation select supports IDs and labels while preserving legacy string options', () => {
   const { filters } = mount()
   const select = find(filters.AffiliationFilter({ options: [{ value: 'a', label: '같은 회사명' }, { value: 'b', label: '같은 회사명' }], value: 'b' }), 'select')
@@ -174,4 +164,113 @@ test('affiliation select supports IDs and labels while preserving legacy string 
   assert.equal(legacy.props.defaultValue, '')
   assert.equal(legacy.props.children[1][0].props.value, '기존 옵션')
   assert.equal(legacy.props.children[1][0].props.children, '기존 옵션')
+})
+
+
+async function loadedPage() {
+  const page = mount()
+  await page.respond(0, 200, [driver('a'), driver('b')])
+  await page.respond(1, 200, [driver('a'), driver('b')])
+  return page
+}
+function openWithdrawal(page, id = 'a') {
+  page.table().columns.find((column) => column.key === 'actions').render(driver(id)).props.onClick()
+  return find(page.render(), 'ConfirmationDialog').props
+}
+
+test('withdraw waits for a bodyless 204, locks duplicate confirmation, then refreshes current rows', async () => {
+  const page = await loadedPage()
+  const dialog = openWithdrawal(page)
+  const pending = dialog.onConfirm()
+  await dialog.onConfirm()
+  assert.equal(page.calls.length, 3)
+  assert.equal(page.calls[2].url, '/api/v1/admin/drivers/a')
+  assert.equal(page.calls[2].options.method, 'DELETE')
+  assert.equal(page.calls[2].options.body, undefined)
+  assert.equal(page.calls[2].options.credentials, 'include')
+  assert.equal(page.table().rows.length, 2)
+  assert.ok(find(page.render(), 'ConfirmationDialog'))
+  await page.respond(2, 204)
+  await pending
+  assert.equal(find(page.render(), 'ConfirmationDialog'), undefined)
+  assert.equal(page.calls[3].options.method, 'GET')
+  await page.respond(3, 200, [driver('b')])
+  assert.deepEqual(page.table().rows, [driver('b')])
+})
+
+test('withdraw failure preserves rows and uses the same dialog for retry', async () => {
+  for (const [status, data] of [[404, { code: 'DRIVER_NOT_FOUND' }], [500, {}], [200, {}]]) {
+    const page = await loadedPage()
+    const pending = openWithdrawal(page).onConfirm()
+    await page.respond(2, status, data)
+    await pending
+    assert.equal(page.table().rows.length, 2)
+    assert.match(find(page.render(), 'ConfirmationDialog').props.description,
+      status === 404 ? /찾을 수 없습니다/ : /오류가 발생했습니다/)
+    const retry = find(page.render(), 'ConfirmationDialog').props.onConfirm()
+    assert.equal(page.calls.length, 4)
+    await page.respond(3, 204)
+    await retry
+    assert.equal(find(page.render(), 'ConfirmationDialog'), undefined)
+  }
+  const offline = await loadedPage()
+  const pending = openWithdrawal(offline).onConfirm()
+  offline.calls[2].reject(new TypeError('offline'))
+  await pending
+  assert.equal(offline.table().rows.length, 2)
+  assert.match(find(offline.render(), 'ConfirmationDialog').props.description, /오류가 발생했습니다/)
+})
+
+test('cancelled withdrawal completion refreshes server state without closing a new target dialog', async () => {
+  for (const status of [204, 500]) {
+    const page = await loadedPage()
+    const dialog = openWithdrawal(page)
+    const pending = dialog.onConfirm()
+    dialog.onCancel()
+    const next = openWithdrawal(page, 'b')
+    await next.onConfirm()
+    assert.equal(page.calls.length, 3)
+    await page.respond(2, status, status === 500 ? {} : undefined)
+    await pending
+    assert.equal(find(page.render(), 'ConfirmationDialog').props.description, '탈퇴한 회원 정보는 다시 복구할 수 없습니다.')
+    assert.equal(page.calls[3].options.method, 'GET')
+    await page.respond(3, 200, status === 204 ? [driver('b')] : [driver('a'), driver('b')])
+    const nextPending = find(page.render(), 'ConfirmationDialog').props.onConfirm()
+    assert.equal(page.calls[4].url, '/api/v1/admin/drivers/b')
+    await page.respond(4, 204)
+    await nextPending
+  }
+})
+
+test('withdrawal invalidates an earlier search request and refreshes the latest query', async () => {
+  const page = await loadedPage()
+  const pending = openWithdrawal(page).onConfirm()
+  page.change('SearchFilter', '기사 b')
+  assert.equal(page.calls.length, 4)
+  await page.respond(2, 204)
+  await pending
+  page.render()
+  assert.equal(new URL(page.calls[4].url, 'http://localhost').searchParams.get('nameQuery'), '기사 b')
+  await page.respond(4, 200, [driver('b')])
+  await page.respond(3, 200, [driver('a'), driver('b')])
+  assert.deepEqual(page.table().rows, [driver('b')])
+})
+
+test('late withdrawal success or 401 after navigation has no effect on the new screen', async () => {
+  for (const status of [204, 401]) {
+    const page = await loadedPage()
+    const pending = openWithdrawal(page).onConfirm()
+    page.unmount()
+    page.window.location.hash = '#/settlements'
+    await page.respond(2, status, status === 401 ? { code: 'INVALID_ADMIN_SESSION' } : undefined)
+    await pending
+    assert.equal(page.window.location.hash, '#/settlements')
+    assert.equal(page.calls.length, 3)
+  }
+  const current = await loadedPage()
+  const pending = openWithdrawal(current).onConfirm()
+  await current.respond(2, 401, { code: 'INVALID_ADMIN_SESSION' })
+  await pending
+  assert.equal(current.window.location.hash, '/login')
+  assert.equal(current.table().rows.length, 2)
 })

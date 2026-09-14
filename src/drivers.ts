@@ -36,3 +36,7 @@ export async function getDrivers(query?: DriverQuery): Promise<Driver[]> {
     return Object.fromEntries(fields.map((field) => [field, record[field]])) as Driver
   })
 }
+
+export async function withdrawDriver(id: string): Promise<void> {
+  await requestAdmin(`drivers/${encodeURIComponent(id)}`, { method: 'DELETE', status: 204 })
+}
