@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import ts from 'typescript'
@@ -273,4 +274,21 @@ test('late withdrawal success or 401 after navigation has no effect on the new s
   await pending
   assert.equal(current.window.location.hash, '/login')
   assert.equal(current.table().rows.length, 2)
+})
+
+
+test('calendar ranges retain 23-hour and 25-hour DST days regardless of the host timezone', () => {
+  const result = execFileSync(process.execPath, ['-e', `
+    const api = {};
+    new Function('exports', require('node:fs').readFileSync(0, 'utf8'))(api);
+    process.stdout.write(JSON.stringify(['2026-03-08', '2026-11-01'].map((day) =>
+      Object.fromEntries(api.getDateRangeParams({ start: day, end: day })))));
+  `], { env: { ...process.env, TZ: 'America/New_York' }, input: sources['utils/dateRange.ts'], encoding: 'utf8' })
+  const ranges = JSON.parse(result)
+  assert.deepEqual(ranges, [
+    { createdFrom: '2026-03-08T05:00:00.000Z', createdBefore: '2026-03-09T04:00:00.000Z' },
+    { createdFrom: '2026-11-01T04:00:00.000Z', createdBefore: '2026-11-02T05:00:00.000Z' },
+  ])
+  assert.deepEqual(ranges.map(({ createdFrom, createdBefore }) =>
+    (Date.parse(createdBefore) - Date.parse(createdFrom)) / 3_600_000), [23, 25])
 })
