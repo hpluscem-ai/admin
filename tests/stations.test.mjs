@@ -28,6 +28,7 @@ function mount(kind = 'list', id = 'a') {
   const window = { location: { hash: '#/infrastructure' } }
   let index = 0, props = { id }
   const react = {
+    useRef(initial) { const key = index++; if (!(key in slots)) slots[key] = { current: initial }; return slots[key] },
     useState(initial) {
       const key = index++
       if (!(key in slots)) slots[key] = typeof initial === 'function' ? initial() : initial
@@ -83,7 +84,7 @@ function mount(kind = 'list', id = 'a') {
       const { InfrastructureForm } = load('components/InfrastructureForm.tsx')
       return () => { index = 0; return InfrastructureForm({ initialValues, actionLabel: '수정' }) }
     },
-    async respond(index, status, data) { calls[index].resolve(Response.json(data, { status })); await tick() },
+    async respond(index, status, data) { calls[index].resolve(status === 204 ? new Response(null, { status }) : Response.json(data, { status })); await tick() },
   }
   page.render()
   return page
@@ -185,15 +186,121 @@ test('late list/detail responses and departed-page 401 cannot overwrite current 
   }
 })
 
-test('deleting and saving remain pending and cannot mutate real API data', async () => {
+test('saving remains pending and cannot mutate real API data', async () => {
   const page = mount()
   await page.respond(0, 200, [station()])
-  find(page.table().columns.find(({ key }) => key === 'actions').render(page.table().rows[0]), 'button').props.onClick()
-  find(page.render(), 'ConfirmationDialog').props.onConfirm()
-  assert.match(find(page.render(), 'ConfirmationDialog').props.description, /서버 연동이 필요/)
-  assert.equal(page.table().rows.length, 1)
   const render = page.form(page.api.getStationValues(station('positive', [35.5, 127.25])))
   await render().props.onSubmit({ preventDefault() {} })
   assert.match(find(render(), 'p').props.children, /저장 서버 연동이 필요/)
   assert.equal(page.calls.length, 1)
+})
+
+
+async function loadedPage() {
+  const page = mount()
+  await page.respond(0, 200, [station('a'), station('b')])
+  return page
+}
+function openDelete(page, id = 'a') {
+  const row = page.table().rows.find((row) => row.id === id)
+  find(page.table().columns.find(({ key }) => key === 'actions').render(row), 'button').props.onClick()
+  return find(page.render(), 'ConfirmationDialog').props
+}
+
+test('station delete waits for bodyless 204 and prevents duplicate confirmations before refreshing', async () => {
+  const page = await loadedPage()
+  const dialog = openDelete(page)
+  const pending = dialog.onConfirm()
+  await dialog.onConfirm()
+  assert.equal(page.calls.length, 2)
+  assert.equal(page.calls[1].url, '/api/v1/admin/stations/a')
+  assert.equal(page.calls[1].options.method, 'DELETE')
+  assert.equal(page.calls[1].options.body, undefined)
+  assert.equal(page.calls[1].options.credentials, 'include')
+  assert.equal(page.table().rows.length, 2)
+  assert.ok(find(page.render(), 'ConfirmationDialog'))
+  await page.respond(1, 204)
+  await pending
+  assert.equal(find(page.render(), 'ConfirmationDialog'), undefined)
+  assert.equal(page.calls[2].options.method, 'GET')
+  await page.respond(2, 200, [station('b')])
+  assert.deepEqual(page.table().rows.map(({ id }) => id), ['b'])
+})
+
+test('delete errors preserve data and allow retry inside the existing confirmation dialog', async () => {
+  for (const status of [404, 500, 200]) {
+    const page = await loadedPage()
+    const pending = openDelete(page).onConfirm()
+    await page.respond(1, status, status === 404 ? { code: 'STATION_NOT_FOUND' } : {})
+    await pending
+    assert.equal(page.table().rows.length, 2)
+    assert.match(find(page.render(), 'ConfirmationDialog').props.description,
+      status === 404 ? /찾을 수 없습니다/ : /삭제 중 오류/)
+    const retry = find(page.render(), 'ConfirmationDialog').props.onConfirm()
+    await page.respond(2, 204)
+    await retry
+    assert.equal(find(page.render(), 'ConfirmationDialog'), undefined)
+  }
+  const offline = await loadedPage()
+  const pending = openDelete(offline).onConfirm()
+  offline.calls[1].reject(new TypeError('offline'))
+  await pending
+  assert.equal(offline.table().rows.length, 2)
+  assert.match(find(offline.render(), 'ConfirmationDialog').props.description, /삭제 중 오류/)
+})
+
+test('cancel does not send DELETE; cancelling in flight refreshes without affecting a new modal target', async () => {
+  const cancelled = await loadedPage()
+  openDelete(cancelled).onCancel()
+  assert.equal(cancelled.calls.length, 1)
+  assert.equal(cancelled.table().rows.length, 2)
+  for (const status of [204, 500]) {
+    const page = await loadedPage()
+    const dialog = openDelete(page)
+    const pending = dialog.onConfirm()
+    dialog.onCancel()
+    const next = openDelete(page, 'b')
+    await next.onConfirm()
+    assert.equal(page.calls.length, 2)
+    await page.respond(1, status, status === 500 ? {} : undefined)
+    await pending
+    assert.equal(find(page.render(), 'ConfirmationDialog').props.description, '삭제한 인프라 데이터는 다시 복구할 수 없습니다.')
+    await page.respond(2, 200, status === 204 ? [station('b')] : [station('a'), station('b')])
+    const nextPending = find(page.render(), 'ConfirmationDialog').props.onConfirm()
+    assert.equal(page.calls[3].url, '/api/v1/admin/stations/b')
+    await page.respond(3, 204)
+    await nextPending
+  }
+})
+
+test('completed deletion invalidates older results and reloads the latest search', async () => {
+  const page = await loadedPage()
+  const pending = openDelete(page).onConfirm()
+  page.change('SearchFilter', '주유소 b')
+  await page.respond(1, 204)
+  await pending
+  page.render()
+  assert.equal(new URL(page.calls[3].url, 'http://localhost').searchParams.get('stationQuery'), '주유소 b')
+  await page.respond(3, 200, [station('b')])
+  await page.respond(2, 200, [station('a'), station('b')])
+  assert.deepEqual(page.table().rows.map(({ id }) => id), ['b'])
+})
+
+test('departed-page delete responses cannot refresh or redirect the new screen; current 401 still redirects', async () => {
+  for (const status of [204, 401, 500]) {
+    const page = await loadedPage()
+    const pending = openDelete(page).onConfirm()
+    page.unmount()
+    page.window.location.hash = '#/drivers'
+    await page.respond(1, status, status === 204 ? undefined : { code: 'INVALID_ADMIN_SESSION' })
+    await pending
+    assert.equal(page.window.location.hash, '#/drivers')
+    assert.equal(page.calls.length, 2)
+  }
+  const current = await loadedPage()
+  const pending = openDelete(current).onConfirm()
+  await current.respond(1, 401, { code: 'INVALID_ADMIN_SESSION' })
+  await pending
+  assert.equal(current.window.location.hash, '/login')
+  assert.equal(current.table().rows.length, 2)
 })

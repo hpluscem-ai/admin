@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { DataPageHeader } from '../components/DataPageHeader'
 import { DataTable, type DataTableColumn } from '../components/DataTable'
 import { DateRangeFilter, SearchFilter } from '../components/PageFilters'
-import { isInvalidAdminSession } from '../adminAuth'
-import { getStations, getStationValues, STATIONS_LOAD_ERROR, type Station } from '../stations'
+import { AdminApiError, isInvalidAdminSession } from '../adminAuth'
+import { getStations, getStationValues, deleteStation, STATIONS_LOAD_ERROR, type Station } from '../stations'
 import { getDefaultDateRange } from '../utils/dateRange'
 import packageIcon from '../assets/package.svg'
 
@@ -61,25 +61,73 @@ export function InfrastructureDataPage() {
   const [dateRange, setDateRange] = useState(getDefaultDateRange)
   const [stationQuery, setStationQuery] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<InfrastructureData | null>(null)
+  const [refresh, setRefresh] = useState(0)
+  const lifetime = useRef<object | null>(null)
+  const modalOwner = useRef<object | null>(null)
+  const submitting = useRef(false)
+  const queryGeneration = useRef(0)
+  useEffect(() => {
+    lifetime.current = {}
+    return () => { lifetime.current = null }
+  }, [])
   useEffect(() => {
     let active = true
+    const generation = ++queryGeneration.current
     setStations(null)
     setLoadError('')
     void getStations(dateRange, stationQuery).then((loaded) => {
-      if (active) setStations(loaded)
+      if (active && queryGeneration.current === generation) setStations(loaded)
     }).catch((error: unknown) => {
-      if (!active) return
+      if (!active || queryGeneration.current !== generation) return
       if (isInvalidAdminSession(error)) window.location.hash = '/login'
       else setLoadError(STATIONS_LOAD_ERROR)
     })
     return () => { active = false }
-  }, [dateRange, stationQuery])
+  }, [dateRange, stationQuery, refresh])
   const rows = (stations ?? []).map((station) => ({
     ...getStationValues(station), id: station.id, registeredAt: station.createdAt,
   }))
 
-  function handleDelete() {
-    setDeleteError('인프라 데이터 삭제 서버 연동이 필요합니다.')
+  async function handleDelete() {
+    if (!deleteTarget || submitting.current || !lifetime.current) return
+    const owner = lifetime.current
+    const targetOwner = modalOwner.current
+    const targetId = deleteTarget.id
+    const generation = queryGeneration.current
+    const hash = window.location.hash
+    const isCurrent = () => lifetime.current === owner && window.location.hash === hash
+    submitting.current = true
+    setDeleteError('')
+    try {
+      await deleteStation(targetId)
+      if (!isCurrent()) return
+      if (generation === queryGeneration.current) {
+        setStations((current) => current?.filter(({ id }) => id !== targetId) ?? null)
+      }
+      ++queryGeneration.current
+      setRefresh((current) => current + 1)
+      if (modalOwner.current === targetOwner) {
+        modalOwner.current = null
+        setDeleteTarget(null)
+      }
+    } catch (error) {
+      if (!isCurrent()) return
+      if (isInvalidAdminSession(error)) {
+        window.location.hash = '/login'
+        return
+      }
+      if (modalOwner.current === targetOwner) {
+        setDeleteError(error instanceof AdminApiError && error.status === 404
+          ? '주유소를 찾을 수 없습니다.'
+          : '인프라 데이터 삭제 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.')
+      } else {
+        // Closing the dialog does not cancel the server operation.
+        ++queryGeneration.current
+        setRefresh((current) => current + 1)
+      }
+    } finally {
+      submitting.current = false
+    }
   }
 
   return (
@@ -94,7 +142,7 @@ export function InfrastructureDataPage() {
         />
       </DataPageHeader>
       <DataTable
-        columns={getColumns((row) => { setDeleteError(''); setDeleteTarget(row) })}
+        columns={getColumns((row) => { modalOwner.current = {}; setDeleteError(''); setDeleteTarget(row) })}
         emptyMessage={loadError || (stations === null ? '인프라 데이터를 불러오는 중입니다.' : '조회 조건에 맞는 인프라 데이터가 없습니다.')}
         rows={rows}
         getRowKey={(row) => row.id}
@@ -107,7 +155,7 @@ export function InfrastructureDataPage() {
         <ConfirmationDialog
           actionLabel="삭제"
           description={deleteError || '삭제한 인프라 데이터는 다시 복구할 수 없습니다.'}
-          onCancel={() => setDeleteTarget(null)}
+          onCancel={() => { modalOwner.current = null; setDeleteTarget(null) }}
           onConfirm={handleDelete}
           title="인프라 데이터를 삭제하시겠습니까?"
         />

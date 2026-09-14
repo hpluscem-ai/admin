@@ -59,3 +59,7 @@ export async function getStations(dateRange: DateRange, stationQuery: string): P
 export async function getStation(id: string): Promise<Station> {
   return readStation(await requestAdmin(`stations/${encodeURIComponent(id)}`))
 }
+
+export async function deleteStation(id: string): Promise<void> {
+  await requestAdmin(`stations/${encodeURIComponent(id)}`, { method: 'DELETE', status: 204 })
+}
