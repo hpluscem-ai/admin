@@ -30,6 +30,10 @@ database.exec(sql('005-driver-withdrawal.sql'))
 for (const { sql } of indexes) database.exec(sql)
 database.exec('COMMIT; PRAGMA foreign_keys = ON;')
 assert.equal(database.prepare('PRAGMA user_version').get().user_version, 5)
+// The existing ERD documents v5; only the approved station field removal changes this UI.
+// Mileage v6's additional table/columns remain outside this desktop UI change.
+database.exec(sql('007-station-address-only.sql'))
+assert.equal(database.prepare('PRAGMA user_version').get().user_version, 7)
 assert.deepEqual(database.prepare('PRAGMA foreign_key_check').all(), [])
 
 const tables = database.prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all()
@@ -49,7 +53,7 @@ const relations = tables.flatMap(({ name }) => {
 const partialIndexes = database.prepare("SELECT sql FROM sqlite_schema WHERE type = 'index' AND name IN ('users_registered_email_idx', 'users_registered_phone_idx')").all()
 database.close()
 
-test('ERD contains every v5 table and column, including both session stores', () => {
+test('ERD preserves its documented tables and applies the station address-only migration', () => {
   assert.deepEqual(erdTables.map(({ id }) => id).sort(), tables.map(({ name }) => name).sort())
   for (const table of erdTables) {
     assert.deepEqual(table.fields.map(({ name }) => name).sort(), columns[table.id].map(({ name }) => name).sort(), table.id)

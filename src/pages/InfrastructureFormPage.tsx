@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AdminApiError, isInvalidAdminSession } from '../adminAuth'
-import { getStation, getStationValues, STATIONS_LOAD_ERROR, type Station } from '../stations'
+import { getStation, getStationValues, saveStation, STATIONS_LOAD_ERROR, type Station } from '../stations'
 import {
   InfrastructureForm,
   type InfrastructureSaveResult,
@@ -44,7 +44,7 @@ type InfrastructureCreatePageProps = {
   save?: SaveInfrastructureData
 }
 
-export function InfrastructureCreatePage({ save }: InfrastructureCreatePageProps = {}) {
+export function InfrastructureCreatePage({ save = saveStation }: InfrastructureCreatePageProps = {}) {
   return (
     <InfrastructureFormPage
       actionLabel="인프라 데이터 등록"
@@ -87,7 +87,7 @@ export function InfrastructureEditPage({
       actionLabel="인프라 데이터 수정"
       error={loadError}
       initialValues={station ? getStationValues(station) : undefined}
-      save={save}
+      save={save ?? ((values) => saveStation(values, station ?? undefined))}
       title="인프라 데이터 수정"
       titleId="infrastructure-edit-title"
     />

@@ -1,5 +1,5 @@
-import { requestAdmin } from './adminAuth'
-import type { InfrastructureValues } from './components/InfrastructureForm'
+import { AdminApiError, requestAdmin } from './adminAuth'
+import type { InfrastructureSaveResult, InfrastructureValues } from './components/InfrastructureForm'
 import { getDateRangeParams, type DateRange } from './utils/dateRange'
 
 export type Station = {
@@ -62,4 +62,48 @@ export async function getStation(id: string): Promise<Station> {
 
 export async function deleteStation(id: string): Promise<void> {
   await requestAdmin(`stations/${encodeURIComponent(id)}`, { method: 'DELETE', status: 204 })
+}
+
+export async function saveStation(values: InfrastructureValues, station?: Station): Promise<InfrastructureSaveResult> {
+  const invalid = { ok: false as const, message: '입력한 인프라 정보를 확인해주세요.' }
+  const latitude = Number(values.latitude.trim())
+  const longitude = Number(values.longitude.trim())
+  if (!/^-?\d+(?:\.\d+)?$/.test(values.latitude.trim()) ||
+    !/^-?\d+(?:\.\d+)?$/.test(values.longitude.trim()) ||
+    !Number.isFinite(latitude) || Math.abs(latitude) > 90 ||
+    !Number.isFinite(longitude) || Math.abs(longitude) > 180) return invalid
+
+  let devices: { id?: string; model: string; capacityLiters: number }[]
+  if (station && station.devices.length > 1) {
+    const original = getStationValues(station)
+    if (values.model !== original.model || values.capacity !== original.capacity) {
+      return { ok: false, message: '복수 기기의 모델명과 용량은 현재 화면에서 변경할 수 없습니다.' }
+    }
+    devices = station.devices.map(({ id, model, capacityLiters }) => ({ id, model, capacityLiters }))
+  } else {
+    const capacity = values.capacity.trim()
+    const capacityLiters = Number(capacity.replace(/[,L]/g, ''))
+    if (!/^(?:\d+|\d{1,3}(?:,\d{3})+)L?$/.test(capacity) ||
+      !Number.isSafeInteger(capacityLiters) || capacityLiters <= 0 || !values.model.trim()) return invalid
+    devices = [{ ...(station?.devices[0] ? { id: station.devices[0].id } : {}),
+      model: values.model.trim(), capacityLiters }]
+  }
+  try {
+    const saved = readStation(await requestAdmin(station ? `stations/${encodeURIComponent(station.id)}` : 'stations', {
+      method: station ? 'PUT' : 'POST', status: station ? 200 : 201,
+      body: { businessName: values.station.trim(), pole: values.pole.trim(), roadAddress: values.address.trim(),
+        latitude, longitude, ...(values.note.trim() ? { note: values.note.trim() } : {}), devices },
+    }))
+    if (station && saved.id !== station.id) throw new Error(STATIONS_LOAD_ERROR)
+    return { ok: true }
+  } catch (error) {
+    if (error instanceof AdminApiError) {
+      if (error.status === 404) return { ok: false, message: '주유소를 찾을 수 없습니다.' }
+      if (error.status === 400) return invalid
+      if (error.status === 409 && ['UNKNOWN_DEVICE', 'DUPLICATE_DEVICE_ID'].includes(error.code)) {
+        return { ok: false, message: '기기 정보가 변경되었습니다. 화면을 새로 열어 다시 시도해주세요.' }
+      }
+    }
+    throw error
+  }
 }

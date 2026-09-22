@@ -1,4 +1,6 @@
-import { useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+
+import { isInvalidAdminSession } from '../adminAuth'
 
 import { PrimaryButton, TextField } from './FormControls'
 
@@ -109,14 +111,15 @@ function formatCapacity(value: string) {
 }
 
 function formatCoordinate(value: string) {
+  const sign = value.startsWith('-') ? '-' : ''
   const numericValue = value.replace(/[^\d.]/g, '')
   const decimalPointIndex = numericValue.indexOf('.')
 
   if (decimalPointIndex === -1) {
-    return numericValue
+    return `${sign}${numericValue}`
   }
 
-  return `${numericValue.slice(0, decimalPointIndex + 1)}${numericValue
+  return `${sign}${numericValue.slice(0, decimalPointIndex + 1)}${numericValue
     .slice(decimalPointIndex + 1)
     .replace(/\./g, '')}`
 }
@@ -145,7 +148,7 @@ function validateField(field: InfrastructureField, value: string) {
   if (
     value &&
     (field.name === 'latitude' || field.name === 'longitude') &&
-    !/^\d+(?:\.\d+)?$/.test(value)
+    !/^-?\d+(?:\.\d+)?$/.test(value)
   ) {
     return `${field.label}를 숫자 형식으로 입력해주세요.`
   }
@@ -183,6 +186,13 @@ export function InfrastructureForm({
   const [values, setValues] = useState(initialFormValues)
   const [errors, setErrors] = useState<InfrastructureErrors>({})
   const [submitError, setSubmitError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const submitting = useRef(false)
+  const lifetime = useRef<object | null>(null)
+  useEffect(() => {
+    lifetime.current = {}
+    return () => { lifetime.current = null }
+  }, [])
 
   const hasAllRequiredValues = fields.every(
     (field) => !field.required || Boolean(values[field.name].trim()),
@@ -193,6 +203,7 @@ export function InfrastructureForm({
   const canSubmit = isEditForm ? hasChanges : hasAllRequiredValues
 
   const updateField = (name: keyof InfrastructureValues, nextValue: string) => {
+    if (submitting.current) return
     const formattedValue = formatFieldValue(name, nextValue)
 
     setValues((currentValues) => ({
@@ -228,6 +239,7 @@ export function InfrastructureForm({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (submitting.current || !lifetime.current) return
 
     const nextErrors = getFormErrors(values)
     setErrors(nextErrors)
@@ -242,8 +254,14 @@ export function InfrastructureForm({
       return
     }
 
+    const owner = lifetime.current
+    const hash = window.location.hash
+    const isCurrent = () => lifetime.current === owner && window.location.hash === hash
+    submitting.current = true
+    setSaving(true)
     try {
       const result = await save(values)
+      if (!isCurrent()) return
 
       if (!result.ok) {
         setSubmitError(result.message ?? '인프라 데이터를 저장하지 못했습니다.')
@@ -251,8 +269,18 @@ export function InfrastructureForm({
       }
 
       window.location.hash = '/infrastructure'
-    } catch {
+    } catch (error) {
+      if (!isCurrent()) return
+      if (isInvalidAdminSession(error)) {
+        window.location.hash = '/login'
+        return
+      }
       setSubmitError('인프라 데이터 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.')
+    } finally {
+      if (isCurrent()) {
+        submitting.current = false
+        setSaving(false)
+      }
     }
   }
 
@@ -271,6 +299,7 @@ export function InfrastructureForm({
               </label>
               <div className="form-field-feedback">
                 <TextField
+                  disabled={saving}
                   id={fieldId}
                   name={field.name}
                   value={values[field.name]}
@@ -299,7 +328,7 @@ export function InfrastructureForm({
           )
         })}
       </div>
-      <PrimaryButton type="submit" disabled={!canSubmit}>
+      <PrimaryButton type="submit" disabled={!canSubmit || saving}>
         {actionLabel}
       </PrimaryButton>
       {submitError ? (

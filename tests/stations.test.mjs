@@ -78,11 +78,23 @@ function mount(kind = 'list', id = 'a') {
     change(type, value) { find(page.render(), type).props.onChange(value); page.render() },
     changeId(id) { props = { id }; page.render() },
     unmount() { slots.forEach((slot) => slot?.cleanup?.()) },
-    form(initialValues) {
-      const formSlots = [], formReact = { useState(initial) { const key = index++; if (!(key in formSlots)) formSlots[key] = typeof initial === 'function' ? initial() : initial; return [formSlots[key], (value) => { formSlots[key] = typeof value === 'function' ? value(formSlots[key]) : value }] } }
+    form(initialValues, save) {
+      const formSlots = [], formEffects = []
+      const formReact = {
+        useState(initial) { const key = index++; if (!(key in formSlots)) formSlots[key] = typeof initial === 'function' ? initial() : initial; return [formSlots[key], (value) => { formSlots[key] = typeof value === 'function' ? value(formSlots[key]) : value }] },
+        useRef(initial) { const key = index++; if (!(key in formSlots)) formSlots[key] = { current: initial }; return formSlots[key] },
+        useEffect(effect, deps) { const key = index++; if (!(key in formSlots)) formEffects.push(() => { formSlots[key] = { cleanup: effect(), deps } }) },
+      }
       imports.react = formReact
       const { InfrastructureForm } = load('components/InfrastructureForm.tsx')
-      return () => { index = 0; return InfrastructureForm({ initialValues, actionLabel: '수정' }) }
+      const render = () => {
+        index = 0
+        const tree = InfrastructureForm({ initialValues, actionLabel: '수정', save })
+        formEffects.splice(0).forEach((effect) => effect())
+        return tree
+      }
+      render.unmount = () => formSlots.forEach((slot) => slot?.cleanup?.())
+      return render
     },
     async respond(index, status, data) { calls[index].resolve(status === 204 ? new Response(null, { status }) : Response.json(data, { status })); await tick() },
   }
@@ -111,7 +123,7 @@ test('detail preserves every device and initial form values without concatenatin
   await page.respond(0, 200, station())
   assert.equal(page.calls[0].url, '/api/v1/admin/stations/a')
   const form = find(page.render(), 'InfrastructureForm').props
-  assert.equal(form.save, undefined)
+  assert.equal(typeof form.save, 'function')
   const render = page.form(form.initialValues)
   const inputs = Object.fromEntries(all(render(), 'TextField').map(({ props }) => [props.name, props.value]))
   assert.equal(inputs.capacity, '1,000L / 2,000L')
@@ -186,7 +198,7 @@ test('late list/detail responses and departed-page 401 cannot overwrite current 
   }
 })
 
-test('saving remains pending and cannot mutate real API data', async () => {
+test('a form without a save callback does not fabricate success', async () => {
   const page = mount()
   await page.respond(0, 200, [station()])
   const render = page.form(page.api.getStationValues(station('positive', [35.5, 127.25])))
@@ -303,4 +315,116 @@ test('departed-page delete responses cannot refresh or redirect the new screen; 
   await pending
   assert.equal(current.window.location.hash, '/login')
   assert.equal(current.table().rows.length, 2)
+})
+
+
+const singleStation = () => ({ ...station('one-station'), devices: [station().devices[0]] })
+const valuesFor = (page, item = singleStation()) => page.api.getStationValues(item)
+
+function changeInput(render, name, value) {
+  all(render(), 'TextField').find((field) => field.props.name === name).props.onChange({ target: { value } })
+}
+
+test('create sends only the address contract, credentials and normalized numbers and requires 201', async () => {
+  for (const status of [201, 200]) {
+    const page = mount()
+    const values = { ...valuesFor(page), note: '  셀프  ' }
+    const saving = page.api.saveStation(values)
+    const call = page.calls[1]
+    assert.equal(call.url, '/api/v1/admin/stations')
+    assert.equal(call.options.method, 'POST')
+    assert.equal(call.options.credentials, 'include')
+    assert.deepEqual(JSON.parse(call.options.body), {
+      businessName: values.station, pole: values.pole, roadAddress: values.address,
+      note: '셀프', latitude: -35.5, longitude: -127.25,
+      devices: [{ model: '모델 A', capacityLiters: 1000 }],
+    })
+    const checked = status === 201 ? saving : assert.rejects(saving)
+    await page.respond(1, status, singleStation())
+    if (status === 201) assert.deepEqual(await checked, { ok: true })
+    else await checked
+  }
+})
+
+test('update preserves every existing device ID and only changes the single device explicitly edited', async () => {
+  for (const item of [singleStation(), station()]) {
+    const page = mount()
+    const values = { ...valuesFor(page, item), station: '수정한 주유소' }
+    if (item.devices.length === 1) { values.model = '변경 모델'; values.capacity = '2,500L' }
+    const pending = page.api.saveStation(values, item)
+    assert.equal(page.calls[1].options.method, 'PUT')
+    const body = JSON.parse(page.calls[1].options.body)
+    assert.equal(body.businessName, '수정한 주유소')
+    assert.ok(!('note' in body))
+    assert.deepEqual(body.devices, item.devices.length === 1
+      ? [{ id: item.devices[0].id, model: '변경 모델', capacityLiters: 2500 }]
+      : item.devices.map(({ id, model, capacityLiters }) => ({ id, model, capacityLiters })))
+    await page.respond(1, 200, item)
+    assert.deepEqual(await pending, { ok: true })
+  }
+})
+
+test('ambiguous multi-device edits and invalid numbers never issue a save request', async () => {
+  const page = mount()
+  const multi = station()
+  for (const changes of [{ model: '한 개로 덮어쓰기' }, { capacity: '10002000L' }]) {
+    assert.equal((await page.api.saveStation({ ...valuesFor(page, multi), ...changes }, multi)).ok, false)
+  }
+  for (const changes of [{ latitude: '' }, { longitude: '181' }, { latitude: '-91' },
+    { latitude: 'NaN' }, { capacity: '0L' }, { capacity: '9,007,199,254,740,992L' }, { capacity: '1,00L' }]) {
+    assert.equal((await page.api.saveStation({ ...valuesFor(page), ...changes })).ok, false)
+  }
+  assert.equal(page.calls.length, 1)
+})
+
+test('save errors do not succeed and retain a retry path', async () => {
+  for (const [status, code] of [[400, 'VALIDATION_ERROR'], [404, 'STATION_NOT_FOUND'],
+    [409, 'UNKNOWN_DEVICE'], [409, 'DUPLICATE_DEVICE_ID']]) {
+    const page = mount()
+    const pending = page.api.saveStation(valuesFor(page), singleStation())
+    await page.respond(1, status, { code })
+    assert.equal((await pending).ok, false)
+    const retry = page.api.saveStation(valuesFor(page), singleStation())
+    await page.respond(2, 200, singleStation())
+    assert.deepEqual(await retry, { ok: true })
+  }
+})
+
+test('form blocks duplicate submits and input loss with the existing shared submission lock', async () => {
+  const page = mount()
+  const item = singleStation()
+  const render = page.form(valuesFor(page), (values) => page.api.saveStation(values, item))
+  changeInput(render, 'station', '저장할 이름')
+  changeInput(render, 'latitude', '-12.5')
+  const pending = render().props.onSubmit({ preventDefault() {} })
+  await render().props.onSubmit({ preventDefault() {} })
+  assert.equal(page.calls.length, 2)
+  assert.equal(JSON.parse(page.calls[1].options.body).latitude, -12.5)
+  assert.ok(all(render(), 'TextField').every(({ props }) => props.disabled))
+  changeInput(render, 'station', '저장 중 유실될 입력')
+  assert.equal(all(render(), 'TextField').find(({ props }) => props.name === 'station').props.value, '저장할 이름')
+  await page.respond(1, 500, { code: 'INTERNAL_SERVER_ERROR' })
+  await pending
+  assert.equal(page.window.location.hash, '#/infrastructure')
+  assert.match(find(render(), 'p').props.children, /저장 중 오류/)
+  assert.ok(all(render(), 'TextField').every(({ props }) => !props.disabled))
+  const retry = render().props.onSubmit({ preventDefault() {} })
+  await page.respond(2, 200, item)
+  await retry
+  assert.equal(page.window.location.hash, '/infrastructure')
+})
+
+test('late save responses cannot redirect another page; only current expired sessions redirect', async () => {
+  for (const departed of [false, true]) {
+    for (const status of [200, 401]) {
+      const page = mount()
+      const item = singleStation()
+      const render = page.form(valuesFor(page), (values) => page.api.saveStation(values, item))
+      const pending = render().props.onSubmit({ preventDefault() {} })
+      if (departed) { render.unmount(); page.window.location.hash = '#/drivers' }
+      await page.respond(1, status, status === 200 ? item : { code: 'INVALID_ADMIN_SESSION' })
+      await pending
+      assert.equal(page.window.location.hash, departed ? '#/drivers' : status === 200 ? '/infrastructure' : '/login')
+    }
+  }
 })
