@@ -1251,3 +1251,28 @@
   background: var(--color-white);
   color: var(--color-gray-800);
 }
+
+/* Receipt photo viewer approved at a maximum width of 800px. */
+.receipt-photo-dialog {
+  width: calc(100% - 40px);
+  max-width: 800px;
+  max-height: calc(100dvh - 40px);
+  margin: auto;
+  border: 0;
+}
+
+.receipt-photo-dialog:not([open]) {
+  display: none;
+}
+
+.receipt-photo-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.receipt-photo-dialog img {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100dvh - 146px);
+  object-fit: contain;
+  align-self: center;
+}
