@@ -1,18 +1,14 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { DataPageHeader } from '../components/DataPageHeader'
 import {
   AffiliationFilter,
   DateRangeFilter,
 } from '../components/PageFilters'
-import {
-  createDashboardMockData,
-  type DashboardData,
-  type DashboardReceipt,
-} from '../data/dashboardMockData'
+import { getDashboard, type DashboardData, type DashboardReceipt } from '../dashboard'
+import { isInvalidAdminSession } from '../adminAuth'
 import { getDefaultDateRange, type DateRange } from '../utils/dateRange'
 
 const numberFormatter = new Intl.NumberFormat('ko-KR')
-const weekdays = ['일', '월', '화', '수', '목', '금', '토'] as const
 const chartWidth = 1000
 const chartHeight = 240
 const chartStrokeInset = 1
@@ -63,13 +59,9 @@ function formatShortDate(value: string) {
   return `${month}. ${day}`
 }
 
-function formatSettlementDate(value: string) {
-  const date = parseDateValue(value)
-  return `${formatDate(value)}. (${weekdays[date.getDay()]}) 정산 필요`
-}
-
 function getDateValues(range: DateRange) {
   const dates: string[] = []
+  if ((Date.parse(range.end) - Date.parse(range.start)) / 86400000 > 10000) return dates
   const cursor = parseDateValue(range.start)
   const endDate = parseDateValue(range.end)
 
@@ -81,40 +73,12 @@ function getDateValues(range: DateRange) {
   return dates
 }
 
-function getDashboardView(data: DashboardData, range: DateRange) {
-  const receipts: DashboardReceipt[] = []
-  let accumulatedMileage = 0
-  let settlementMileage = 0
-  let matchedCount = 0
-  let mismatchedCount = 0
-
-  for (const receipt of data.receipts) {
-    if (receipt.date < range.start || receipt.date > range.end) continue
-
-    receipts.push(receipt)
-
-    if (receipt.status === '적립') accumulatedMileage += receipt.mileage
-    if (receipt.settlementEligible) settlementMileage += receipt.mileage
-    if (receipt.isMatch) matchedCount += 1
-    else mismatchedCount += 1
-  }
-
-  receipts.sort((left, right) => right.date.localeCompare(left.date))
-
-  return {
-    accumulatedMileage,
-    matchedCount,
-    mismatchedCount,
-    receipts,
-    settlementMileage,
-  }
-}
-
 type RecentReceiptCardProps = {
   receipts: readonly DashboardReceipt[]
+  message?: string
 }
 
-function RecentReceiptCard({ receipts }: RecentReceiptCardProps) {
+function RecentReceiptCard({ receipts, message }: RecentReceiptCardProps) {
   const recentReceipts = receipts.slice(0, 5)
 
   return (
@@ -124,11 +88,11 @@ function RecentReceiptCard({ receipts }: RecentReceiptCardProps) {
         <a className="recent-card__link" href="#/receipts">전체 내역 보기 →</a>
       </div>
       {recentReceipts.length === 0 ? (
-        <p className="recent-card__empty">선택한 기간의 영수 내역이 없습니다.</p>
+        <p className="recent-card__empty">{message || '선택한 기간의 영수 내역이 없습니다.'}</p>
       ) : recentReceipts.map((receipt) => (
         <div className="recent-card__row" key={receipt.id}>
           <div>
-            <p className="recent-card__mileage">+{numberFormatter.format(receipt.mileage)}마일</p>
+            <p className="recent-card__mileage">{receipt.mileage === null ? '-' : `+${numberFormatter.format(receipt.mileage)}`}마일</p>
             <p className="recent-card__detail">
               {receipt.driverName} 기사님 · {formatDate(receipt.date)}
             </p>
@@ -149,26 +113,14 @@ type ChartData = {
 }
 
 function getChartData(
-  receipts: readonly DashboardReceipt[],
+  points: DashboardData['chart'],
   range: DateRange,
-  selectedAffiliation: string,
+  loaded: boolean,
 ): ChartData {
   const dates = getDateValues(range)
-  const dateIndexes = new Map(dates.map((date, index) => [date, index]))
-  const commonValues = dates.map(() => 0)
-  const affiliationValues = dates.map(() => 0)
-
-  for (const receipt of receipts) {
-    if (receipt.status !== '적립') continue
-
-    const index = dateIndexes.get(receipt.date)
-    if (index === undefined) continue
-
-    commonValues[index] += receipt.mileage
-    if (receipt.affiliation === selectedAffiliation) {
-      affiliationValues[index] += receipt.mileage
-    }
-  }
+  const byDate = new Map(points.map(point => [point.date, point]))
+  const commonValues = loaded ? dates.map(date => byDate.get(date)?.common ?? 0) : []
+  const affiliationValues = loaded ? dates.map(date => byDate.get(date)?.affiliation ?? 0) : []
 
   const maximumValue = Math.max(0, ...commonValues, ...affiliationValues)
   const tickStep = Math.max(500, Math.ceil(maximumValue / 6 / 500) * 500)
@@ -220,14 +172,16 @@ function getVisibleDateIndexes(dateCount: number) {
 }
 
 type MileageChartProps = {
-  affiliations: readonly string[]
+  affiliations: DashboardData['affiliations']
   dateRange: DateRange
-  receipts: readonly DashboardReceipt[]
+  points: DashboardData['chart']
+  loaded: boolean
+  selectedAffiliation: string
+  onAffiliationChange: (value: string) => void
 }
 
-function MileageChart({ affiliations, dateRange, receipts }: MileageChartProps) {
-  const [selectedAffiliation, setSelectedAffiliation] = useState('')
-  const chart = getChartData(receipts, dateRange, selectedAffiliation)
+function MileageChart({ affiliations, dateRange, points, loaded, selectedAffiliation, onAffiliationChange }: MileageChartProps) {
+  const chart = getChartData(points, dateRange, loaded)
   const commonSeries = getChartSeries(chart.commonValues, chart.yMaximum)
   const affiliationSeries = getChartSeries(chart.affiliationValues, chart.yMaximum)
   const visibleDateIndexes = getVisibleDateIndexes(chart.dates.length)
@@ -244,11 +198,11 @@ function MileageChart({ affiliations, dateRange, receipts }: MileageChartProps) 
             </p>
             {selectedAffiliation ? (
               <p className="dashboard-chart__legend" data-series="affiliation">
-                <span aria-hidden="true" />{selectedAffiliation}
+                <span aria-hidden="true" />{affiliations.find(option => option.value === selectedAffiliation)?.label}
               </p>
             ) : null}
           </div>
-          <AffiliationFilter options={affiliations} onChange={setSelectedAffiliation} />
+          <AffiliationFilter options={affiliations} value={selectedAffiliation} onChange={onAffiliationChange} />
         </div>
         <div className="dashboard-chart__body">
           <div
@@ -324,10 +278,29 @@ function MileageChart({ affiliations, dateRange, receipts }: MileageChartProps) 
 }
 
 export function DashboardPage() {
-  const [dashboardData] = useState(() => createDashboardMockData())
   const [dateRange, setDateRange] = useState(getDefaultDateRange)
-  const dashboardView = getDashboardView(dashboardData, dateRange)
-  const affiliations = Array.from(new Set(dashboardData.receipts.map((receipt) => receipt.affiliation)))
+  const [selectedAffiliation, setSelectedAffiliation] = useState('')
+  const [dashboardView, setDashboardView] = useState<DashboardData | null>(null)
+  const [affiliations, setAffiliations] = useState<DashboardData['affiliations']>([])
+  const [loadError, setLoadError] = useState('')
+  useEffect(() => {
+    let current = true
+    const hash = window.location.hash
+    setDashboardView(null)
+    setLoadError('')
+    void getDashboard(dateRange, selectedAffiliation).then(data => {
+      if (!current || window.location.hash !== hash) return
+      setDashboardView(data)
+      setAffiliations(data.affiliations)
+    }).catch((error: unknown) => {
+      if (!current || window.location.hash !== hash) return
+      if (isInvalidAdminSession(error)) { window.location.hash = '/login'; return }
+      setLoadError('데이터를 불러오지 못했습니다. 조회 기간을 다시 선택해주세요.')
+    })
+    return () => { current = false }
+  }, [dateRange, selectedAffiliation])
+  const value = (key: 'accumulatedMileage' | 'settlementMileage' | 'matchedCount' | 'mismatchedCount') =>
+    dashboardView ? numberFormatter.format(dashboardView[key]) : '-'
 
   return (
     <section className="dashboard-page" aria-labelledby="dashboard-title">
@@ -339,33 +312,35 @@ export function DashboardPage() {
           <SummaryCard
             label="누적 적립 마일리지"
             unit="마일"
-            value={numberFormatter.format(dashboardView.accumulatedMileage)}
+            value={value('accumulatedMileage')}
           />
           <SummaryCard
-            helper={formatSettlementDate(dashboardData.settlementDate)}
             label="정산 예정 마일리지"
             linkHref="#/settlements"
             unit="마일"
-            value={numberFormatter.format(dashboardView.settlementMileage)}
+            value={value('settlementMileage')}
           />
           <SummaryCard
             label="일치 영수 데이터"
             unit="건"
-            value={numberFormatter.format(dashboardView.matchedCount)}
+            value={value('matchedCount')}
           />
           <SummaryCard
             label="미일치 영수 데이터"
             linkHref="#/receipts"
             unit="건"
-            value={numberFormatter.format(dashboardView.mismatchedCount)}
+            value={value('mismatchedCount')}
           />
         </div>
-        <RecentReceiptCard receipts={dashboardView.receipts} />
+        <RecentReceiptCard receipts={dashboardView?.receipts ?? []} message={loadError || (dashboardView === null ? '데이터를 불러오는 중입니다.' : '')} />
       </div>
       <MileageChart
         affiliations={affiliations}
         dateRange={dateRange}
-        receipts={dashboardView.receipts}
+        points={dashboardView?.chart ?? []}
+        loaded={dashboardView !== null}
+        selectedAffiliation={selectedAffiliation}
+        onAffiliationChange={setSelectedAffiliation}
       />
     </section>
   )

@@ -6,12 +6,12 @@ import ts from 'typescript'
 const compile = (path) => ts.transpileModule(readFileSync(new URL(path, import.meta.url), 'utf8'), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
 }).outputText
-const sources = Object.fromEntries(['adminAuth.ts', 'logisticsCompanies.ts', 'data/bankCodeOptions.ts',
+const sources = Object.fromEntries(['adminAuth.ts', 'logisticsCompanies.ts', 'settlements.ts', 'data/bankCodeOptions.ts',
   'pages/LogisticsSettlementPage.tsx', 'pages/LogisticsFormPage.tsx', 'components/LogisticsForm.tsx'].map((path) => [path, compile(`../src/${path}`)]))
 const company = (id, businessName = id) => ({ id, businessName, businessNumber: '123-45-67890',
   corporateRegistrationNumber: '123456-1234567', businessAddress: '서울시', managerName: '담당자',
   managerPhone: '01012345678', bankCode: '4', accountNumber: '1234567890', accountHolder: '예금주',
-  active: true, createdAt: '2020-01-01T00:00:00Z', updatedAt: '2020-01-01T00:00:00Z' })
+  active: true, mileage: 0, transferStatus: null, createdAt: '2020-01-01T00:00:00Z', updatedAt: '2020-01-01T00:00:00Z' })
 const tick = () => new Promise((resolve) => setImmediate(resolve))
 const jsx = (type, props) => ({ type, props })
 function find(node, type) {
@@ -58,6 +58,7 @@ function mount(kind = 'list', id = 'a') {
   imports['./FormControls'] = { PrimaryButton: 'PrimaryButton', TextField: 'TextField' }
   const api = load('logisticsCompanies.ts')
   imports['../logisticsCompanies'] = api
+  imports['../settlements'] = load('settlements.ts')
   for (const name of ['ConfirmationDialog', 'DataPageHeader', 'DataTable', 'LogisticsForm']) {
     imports[`../components/${name}`] = { [name]: name }
   }
@@ -83,7 +84,7 @@ function mount(kind = 'list', id = 'a') {
   return page
 }
 
-test('real list fields and bank names replace samples; missing aggregates remain unavailable', async () => {
+test('real settlement list fields, bank names and zero mileage replace samples', async () => {
   const page = mount()
   assert.match(find(page.render(), 'DataTable').props.emptyMessage, /불러오는 중/)
   await page.respond(0, 200, [company('a', 'Alpha 물류'), company('b', 'Beta 물류')])
@@ -91,15 +92,19 @@ test('real list fields and bank names replace samples; missing aggregates remain
   assert.equal(table.rows.length, 2)
   assert.equal(table.rows[0].bank, 'KB국민은행')
   assert.equal(table.getRowKey(table.rows[0]), 'a')
-  for (const key of ['mileage', 'transferStatus']) assert.equal(table.columns.find((column) => column.key === key).render(table.rows[0]), '-')
+  assert.equal(table.columns.find(column => column.key === 'mileage').render(table.rows[0]), '0')
+  assert.equal(table.columns.find(column => column.key === 'transferStatus').render(table.rows[0]), '-')
   assert.equal(find(table.columns.find((column) => column.key === 'actions').render(table.rows[0]), 'a').props.href, '#/settlements/edit/a')
   find(page.render(), 'SearchFilter').props.onChange(' ALPHA ')
   assert.deepEqual(find(page.render(), 'DataTable').props.rows.map(({ id }) => id), ['a'])
   const month = find(page.render(), 'DataPageHeader').props.children[1]
   find(month.type(month.props), 'input').props.onChange({ target: { value: '2030-12' } })
+  page.render()
+  assert.equal(page.calls.length, 2)
+  assert.match(page.calls[1].url, /settlements\?month=2030-12/)
+  await page.respond(1, 200, [company('a', 'Alpha 물류')])
   assert.deepEqual(find(page.render(), 'DataTable').props.rows.map(({ id }) => id), ['a'])
-  assert.equal(page.calls.length, 1)
-  assert.equal(page.calls[0].url, '/api/v1/admin/logistics-companies')
+  assert.match(page.calls[0].url, /\/api\/v1\/admin\/settlements\?month=/)
   assert.equal(page.calls[0].options.method, 'GET')
   assert.equal(page.calls[0].options.credentials, 'include')
 })
@@ -140,7 +145,7 @@ test('detail loads all real form fields and defers writing until submit', async 
   assert.equal(page.render(), null)
   await page.respond(0, 200, company('a'))
   const form = find(page.render(), 'LogisticsForm').props
-  const { active: _active, createdAt: _createdAt, updatedAt: _updatedAt, ...fields } = company('a')
+  const { active: _active, mileage: _mileage, transferStatus: _transferStatus, createdAt: _createdAt, updatedAt: _updatedAt, ...fields } = company('a')
   assert.deepEqual(form.initialValues, { ...fields, bank: 'KB국민은행' })
   assert.equal(typeof form.save, 'function')
   assert.equal(page.calls[0].url, '/api/v1/admin/logistics-companies/a')
@@ -299,7 +304,7 @@ test('deactivation explains preserved records, supports cancel, and waits for 20
   await pending
   assert.equal(find(page.render(), 'ConfirmationDialog'), undefined)
   assert.equal(find(page.render(), 'SearchFilter').props.value, 'Beta')
-  assert.equal(page.calls[2].url, '/api/v1/admin/logistics-companies')
+  assert.match(page.calls[2].url, /\/api\/v1\/admin\/settlements\?month=/)
   await page.respond(2, 200, [company('b', 'Beta')])
   assert.deepEqual(table(page).rows.map(({ id }) => id), ['b'])
 })

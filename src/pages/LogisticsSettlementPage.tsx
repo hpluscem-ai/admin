@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { AdminApiError, isInvalidAdminSession } from '../adminAuth'
-import { getLogisticsCompanies, deactivateLogisticsCompany, LOGISTICS_LOAD_ERROR, type LogisticsCompany } from '../logisticsCompanies'
+import { deactivateLogisticsCompany, LOGISTICS_LOAD_ERROR, type LogisticsCompany } from '../logisticsCompanies'
+import { getSettlements, downloadSettlements, uploadSettlements, settlementError, type SettlementCompany } from '../settlements'
 import calendarIcon from '../assets/calendar.svg'
 import packageIcon from '../assets/package.svg'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
@@ -24,15 +25,17 @@ function formatMonth(value: string) {
 type MonthFilterProps = {
   onChange: (month: string) => void
   value: string
+  disabled?: boolean
 }
 
-function MonthFilter({ onChange, value }: MonthFilterProps) {
+function MonthFilter({ onChange, value, disabled }: MonthFilterProps) {
   return (
     <label className="date-filter">
       <img className="filter-control__icon" src={calendarIcon} alt="" />
       <span aria-hidden="true">{formatMonth(value)}</span>
       <input
         aria-label="정산 월"
+        disabled={disabled}
         className="date-filter__picker"
         onChange={(event) => {
           if (event.target.value) onChange(event.target.value)
@@ -46,7 +49,7 @@ function MonthFilter({ onChange, value }: MonthFilterProps) {
 
 function getColumns(
   onDeactivate: (settlement: LogisticsCompany) => void,
-): readonly DataTableColumn<LogisticsCompany>[] {
+): readonly DataTableColumn<SettlementCompany>[] {
   return [
     { key: 'businessName', label: '사업자명', render: (row) => row.businessName },
     { key: 'businessNumber', label: '사업자번호', render: (row) => row.businessNumber },
@@ -55,8 +58,8 @@ function getColumns(
     { key: 'accountNumber', label: '계좌번호', render: (row) => row.accountNumber },
     { key: 'bank', label: '은행', render: (row) => row.bank },
     { key: 'accountHolder', label: '예금주', render: (row) => row.accountHolder },
-    { key: 'mileage', label: '적립 마일리지', render: () => '-' },
-    { key: 'transferStatus', label: '이체 상태', render: () => '-' },
+    { key: 'mileage', label: '적립 마일리지', render: (row) => row.mileage.toLocaleString('ko-KR') },
+    { key: 'transferStatus', label: '이체 상태', render: (row) => row.transferStatus === 'completed' ? '이체완료' : row.transferStatus === 'pending' ? '이체대기' : '-' },
     {
       key: 'actions',
       label: '관리',
@@ -65,13 +68,15 @@ function getColumns(
           <a
             aria-label={`${row.businessName} 수정`}
             className="table-action table-action--brand"
-            href={`#/settlements/edit/${encodeURIComponent(row.id)}`}
+            href={row.active ? `#/settlements/edit/${encodeURIComponent(row.id)}` : undefined}
+            aria-disabled={!row.active}
           >
             수정
           </a>
           <button
             aria-label={`${row.businessName} 비활성화`}
             className="table-action table-action--danger"
+            disabled={!row.active}
             onClick={() => onDeactivate(row)}
             type="button"
           >
@@ -84,12 +89,14 @@ function getColumns(
 }
 
 export function LogisticsSettlementPage() {
-  const [companies, setCompanies] = useState<LogisticsCompany[] | null>(null)
+  const [companies, setCompanies] = useState<SettlementCompany[] | null>(null)
   const [loadError, setLoadError] = useState('')
   const [businessNameQuery, setBusinessNameQuery] = useState('')
   const [selectedMonth, setSelectedMonth] = useState(toMonthValue)
   const [deactivationTarget, setDeactivationTarget] = useState<LogisticsCompany | null>(null)
   const [deactivationError, setDeactivationError] = useState('')
+  const [fileBusy, setFileBusy] = useState(false)
+  const fileSubmitting = useRef(false)
   const [refresh, setRefresh] = useState(0)
   const lifetime = useRef<object | null>(null)
   const modalOwner = useRef<object | null>(null)
@@ -104,7 +111,7 @@ export function LogisticsSettlementPage() {
     loadOwner.current = current
     setCompanies(null)
     setLoadError('')
-    void getLogisticsCompanies().then((loaded) => {
+    void getSettlements(selectedMonth).then((loaded) => {
       if (loadOwner.current === current) setCompanies(loaded)
     }).catch((error: unknown) => {
       if (loadOwner.current !== current) return
@@ -115,10 +122,43 @@ export function LogisticsSettlementPage() {
       setLoadError(LOGISTICS_LOAD_ERROR)
     })
     return () => { loadOwner.current = null }
-  }, [refresh])
+  }, [refresh, selectedMonth])
   const query = businessNameQuery.trim().toLocaleLowerCase('ko-KR')
   const filteredCompanies = (companies ?? []).filter((company) =>
     company.businessName.toLocaleLowerCase('ko-KR').includes(query))
+
+  async function handleFile(file?: File) {
+    if (fileSubmitting.current || !lifetime.current) return
+    const owner = lifetime.current
+    const hash = window.location.hash
+    const isCurrent = () => lifetime.current === owner && window.location.hash === hash
+    fileSubmitting.current = true
+    setFileBusy(true)
+    setLoadError('')
+    try {
+      if (file) await uploadSettlements(selectedMonth, file)
+      else {
+        const blob = await downloadSettlements(selectedMonth)
+        if (!isCurrent()) return
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `settlements-${selectedMonth}.xls`
+        link.click()
+        setTimeout(() => URL.revokeObjectURL(url), 1000)
+      }
+      if (isCurrent()) setRefresh(current => current + 1)
+    } catch (error) {
+      if (!isCurrent()) return
+      if (isInvalidAdminSession(error)) { window.location.hash = '/login'; return }
+      loadOwner.current = null
+      setCompanies(null)
+      setLoadError(settlementError(error))
+    } finally {
+      fileSubmitting.current = false
+      if (isCurrent()) setFileBusy(false)
+    }
+  }
 
   async function handleDeactivate() {
     if (!deactivationTarget || submitting.current || !lifetime.current) return
@@ -168,7 +208,7 @@ export function LogisticsSettlementPage() {
           placeholder="사업자명으로 검색해주세요."
           value={businessNameQuery}
         />
-        <MonthFilter onChange={setSelectedMonth} value={selectedMonth} />
+        <MonthFilter onChange={setSelectedMonth} value={selectedMonth} disabled={fileBusy} />
       </DataPageHeader>
       <DataTable
         columns={getColumns((company) => { modalOwner.current = {}; setDeactivationError(''); setDeactivationTarget(company) })}
@@ -179,11 +219,15 @@ export function LogisticsSettlementPage() {
 
       <div className="settlement-floating-actions">
         <label className="floating-action">
-          <input accept=".xlsx,.xls" className="sr-only" type="file" />
+          <input accept=".xlsx,.xls" className="sr-only" type="file" disabled={fileBusy} onChange={(event) => {
+            const file = event.currentTarget.files?.[0]
+            event.currentTarget.value = ''
+            if (file) void handleFile(file)
+          }} />
           <img src={packageIcon} alt="" />
           이체 내역 엑셀 업로드
         </label>
-        <button className="floating-action" type="button">
+        <button className="floating-action" type="button" disabled={fileBusy} onClick={() => void handleFile()}>
           <img src={packageIcon} alt="" />
           대량이체 엑셀 다운로드
         </button>
