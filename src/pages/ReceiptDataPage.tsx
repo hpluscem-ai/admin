@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import chevronDownIcon from '../assets/chevron-down.svg'
+import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { DataPageHeader } from '../components/DataPageHeader'
 import { DataTable, type DataTableColumn } from '../components/DataTable'
 import { AffiliationFilter, SearchFilter } from '../components/PageFilters'
-import { isInvalidAdminSession } from '../adminAuth'
-import { getReceiptPhoto, getReceipts, RECEIPTS_LOAD_ERROR, type Receipt } from '../receipts'
+import { AdminApiError, isInvalidAdminSession } from '../adminAuth'
+import { getReceiptPhoto, getReceipts, reviewReceipt, RECEIPTS_LOAD_ERROR, type Receipt } from '../receipts'
 
 const statusNames = { approved: '승인', pending: '대기', rejected: '반려' } as const
 const amount = (value: number | null) => value === null ? '-' : value.toLocaleString('ko-KR')
@@ -28,8 +29,9 @@ function receiptDate(value: string | null) {
 }
 
 type PhotoTarget = { path: string | null; label: string }
+type ReviewTarget = { receipt: Receipt; action: 'approve' | 'reject' }
 
-function getColumns(onPhoto: (target: PhotoTarget) => void): readonly DataTableColumn<Receipt>[] {
+function getColumns(onPhoto: (target: PhotoTarget) => void, onReview: (target: ReviewTarget) => void): readonly DataTableColumn<Receipt>[] {
   const photoButton = (row: Receipt, kind: 'receipt' | 'meter') => <button className="text-button" type="button"
     aria-label={`${row.name} ${kind === 'receipt' ? '영수증' : '계기판'} 사진 보기`}
     onClick={() => onPhoto({ path: row.photos[kind], label: `${row.name} ${kind === 'receipt' ? '영수증' : '계기판'} 사진` })}>보기</button>
@@ -45,7 +47,12 @@ function getColumns(onPhoto: (target: PhotoTarget) => void): readonly DataTableC
     { key: 'finalAmount', label: '최종 금액', render: (row) => amount(row.finalAmount) },
     { key: 'mileage', label: '적립 마일리지', render: (row) => amount(row.mileageAmount) },
     { key: 'receiptDate', label: '영수일시', render: (row) => receiptDate(row.receiptAt) },
-    { key: 'status', label: '승인여부', render: (row) => <ApprovalStatusDisplay name={row.name} status={row.status} /> },
+    { key: 'status', label: '승인여부', render: (row) => row.status === 'pending' && row.settlementId === null
+      ? <span className="approval-status"><span>대기</span><span className="table-actions">
+        <button className="text-button" type="button" aria-label={`${row.name} 승인`} onClick={() => onReview({ receipt: row, action: 'approve' })}>승인</button>
+        <button className="text-button" type="button" aria-label={`${row.name} 반려`} onClick={() => onReview({ receipt: row, action: 'reject' })}>반려</button>
+      </span></span>
+      : <ApprovalStatusDisplay name={row.name} status={row.status} /> },
   ]
 }
 
@@ -56,26 +63,77 @@ export function ReceiptDataPage() {
   const [affiliations, setAffiliations] = useState<{ value: string; label: string }[] | null>(null)
   const [loadError, setLoadError] = useState('')
   const [photo, setPhoto] = useState<PhotoTarget | null>(null)
+  const [review, setReview] = useState<ReviewTarget | null>(null)
+  const [reviewError, setReviewError] = useState('')
+  const [reviewConflict, setReviewConflict] = useState(false)
+  const [refresh, setRefresh] = useState(0)
+  const lifetime = useRef<object | null>(null)
+  const modalOwner = useRef<ReviewTarget | null>(null)
+  const conflictedReview = useRef<ReviewTarget | null>(null)
+  const submitting = useRef(false)
+  const queryGeneration = useRef(0)
 
   useEffect(() => {
+    lifetime.current = {}
+    return () => { lifetime.current = null }
+  }, [])
+  useEffect(() => {
     let active = true
+    const generation = ++queryGeneration.current
     setRows(null)
     setLoadError('')
     const all = getReceipts()
     const filtered = query.trim() || affiliation
       ? getReceipts({ nameQuery: query, logisticsCompanyId: affiliation }) : all
     void Promise.all([all, filtered]).then(([allRows, matchingRows]) => {
-      if (!active) return
+      if (!active || generation !== queryGeneration.current) return
       setAffiliations([...new Map(allRows.map((row) => [row.logisticsCompanyId,
         { value: row.logisticsCompanyId, label: row.logisticsCompanyName }])).values()])
       setRows(matchingRows)
     }).catch((error: unknown) => {
-      if (!active) return
+      if (!active || generation !== queryGeneration.current) return
       if (isInvalidAdminSession(error)) window.location.hash = '/login'
       else setLoadError(RECEIPTS_LOAD_ERROR)
     })
     return () => { active = false }
-  }, [query, affiliation])
+  }, [query, affiliation, refresh])
+
+  function closeReview() {
+    modalOwner.current = null
+    setReview(null)
+  }
+
+  async function handleReview() {
+    if (!review || modalOwner.current !== review || submitting.current || !lifetime.current) return
+    if (conflictedReview.current === review) { closeReview(); return }
+    const owner = lifetime.current
+    const hash = window.location.hash
+    const generation = queryGeneration.current
+    const isCurrent = () => lifetime.current === owner && window.location.hash === hash
+    const reload = () => { ++queryGeneration.current; setRefresh((value) => value + 1) }
+    submitting.current = true
+    setReviewError('')
+    try {
+      const updated = await reviewReceipt(review.receipt, review.action)
+      if (!isCurrent()) return
+      if (generation === queryGeneration.current) setRows((current) => current?.map((row) => row.id === updated.id ? updated : row) ?? null)
+      reload()
+      if (modalOwner.current === review) closeReview()
+    } catch (error) {
+      if (!isCurrent()) return
+      if (isInvalidAdminSession(error)) { window.location.hash = '/login'; return }
+      const conflict = error instanceof AdminApiError && (error.status === 409 || error.status === 404)
+      if (modalOwner.current === review) {
+        if (conflict) conflictedReview.current = review
+        setReviewConflict(conflict)
+        setReviewError(conflict ? '신청 또는 심사 상태가 변경되었습니다. 갱신된 목록을 확인해주세요.'
+          : '심사 결과를 확인하지 못했습니다. 다시 시도해주세요.')
+      }
+      if (conflict || modalOwner.current !== review) reload()
+    } finally {
+      submitting.current = false
+    }
+  }
 
   return (
     <section className="data-page receipt-data-page" aria-labelledby="receipt-data-title">
@@ -83,10 +141,18 @@ export function ReceiptDataPage() {
         <SearchFilter onChange={setQuery} value={query} />
         <AffiliationFilter onChange={setAffiliation} value={affiliation} options={affiliations ?? []} />
       </DataPageHeader>
-      <DataTable columns={getColumns(setPhoto)} rows={rows ?? []} getRowKey={(row) => row.id}
+      <DataTable columns={getColumns(setPhoto, (target) => {
+        if (submitting.current) return
+        modalOwner.current = target; setReviewError(''); setReviewConflict(false); setReview(target)
+      })} rows={rows ?? []} getRowKey={(row) => row.id}
         emptyMessage={loadError || (rows === null || affiliations === null
           ? '영수 데이터를 불러오는 중입니다.' : '조회 조건에 맞는 영수 데이터가 없습니다.')} />
       {photo && <ReceiptPhotoDialog target={photo} onClose={() => setPhoto(null)} />}
+      {review && <ConfirmationDialog
+        title={`${review.action === 'approve' ? '승인' : '반려'}하시겠습니까?`}
+        description={reviewError || `선택한 신청을 ${review.action === 'approve' ? '승인' : '반려'}합니다.`}
+        actionLabel={reviewConflict ? '확인' : review.action === 'approve' ? '승인' : '반려'}
+        onCancel={closeReview} onConfirm={handleReview} />}
     </section>
   )
 }

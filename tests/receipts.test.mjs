@@ -10,6 +10,7 @@ const sources = Object.fromEntries(['adminAuth.ts', 'receipts.ts', 'pages/Receip
 const jsx = (type, props) => ({ type, props })
 const tick = () => new Promise((resolve) => setImmediate(resolve))
 const row = (id, company = 'company-a') => ({ id, userId: 'user-' + id, logisticsCompanyId: company,
+  reviewVersion: 'a'.repeat(64), settlementId: null,
   logisticsCompanyName: '같은 회사명', name: '기사 ' + id, phone: '010-1234-5678', receiptAmount: null,
   meterAmount: null, finalAmount: null, mileageAmount: null, receiptAt: null, status: 'pending',
   matchStatus: 'pending', photos: { receipt: `/api/v1/admin/mileage/applications/${id}/photos/receipt`, meter: null } })
@@ -54,12 +55,25 @@ function mount() {
   imports['./adminAuth'] = imports['../adminAuth'] = load('adminAuth.ts')
   imports['../receipts'] = load('receipts.ts')
   imports['../components/PageFilters'] = { AffiliationFilter: 'AffiliationFilter', SearchFilter: 'SearchFilter' }
-  for (const name of ['DataPageHeader', 'DataTable']) imports[`../components/${name}`] = { [name]: name }
+  for (const name of ['DataPageHeader', 'DataTable', 'ConfirmationDialog']) imports[`../components/${name}`] = { [name]: name }
   const { ReceiptDataPage } = load('pages/ReceiptDataPage.tsx')
   const page = {
     calls, window, api: imports['../receipts'],
     render() { index = 0; const tree = ReceiptDataPage(); effects.splice(0).forEach((effect) => effect()); return tree },
     table() { return find(page.render(), 'DataTable').props },
+    modal() { return find(page.render(), 'ConfirmationDialog')?.props },
+    review(receipt, action) {
+      const node = page.table().columns.find(column => column.key === 'status').render(receipt)
+      const rendered = typeof node.type === 'function' ? node.type(node.props) : node
+      function click(node) {
+        if (!node || typeof node !== 'object') return undefined
+        if (node?.type === 'button' && node.props.children === action) return node.props.onClick
+        return [node?.props?.children].flat(Infinity).map(click).find(Boolean)
+      }
+      const handler = click(rendered)
+      handler?.()
+      return Boolean(handler)
+    },
     change(type, value) { find(page.render(), type).props.onChange(value); page.render() },
     unmount() { slots.forEach((slot) => slot?.cleanup?.()) },
     async respond(index, status, data) { calls[index].resolve(Response.json(data, { status })); await tick() },
@@ -154,4 +168,110 @@ test('photo retrieval uses a protected same-origin route and refuses missing, ex
   const invalid = page.api.getReceiptPhoto(path)
   page.calls[3].resolve(Response.json({}))
   await assert.rejects(invalid)
+})
+
+test('review sends only the version, prevents duplicate clicks and updates only after server success', async () => {
+  const page = mount()
+  await page.respond(0, 200, [row('a')])
+  assert.equal(page.review(row('a'), '승인'), true)
+  const modal = page.modal()
+  assert.equal(modal.title, '승인하시겠습니까?')
+  modal.onConfirm(); modal.onConfirm()
+  assert.equal(page.calls.length, 2)
+  assert.equal(page.calls[1].url, '/api/v1/admin/mileage/applications/a/approve')
+  assert.equal(page.calls[1].options.method, 'POST')
+  assert.deepEqual(JSON.parse(page.calls[1].options.body), { reviewVersion: 'a'.repeat(64) })
+  assert.equal(page.table().rows[0].status, 'pending')
+  const approved = { ...row('a'), status: 'approved', finalAmount: 1234, mileageAmount: 0 }
+  await page.respond(1, 200, approved)
+  assert.equal(page.modal(), undefined)
+  await page.respond(2, 200, [approved])
+  assert.deepEqual(page.table().rows, [approved])
+  assert.equal(page.review(approved, '승인'), false)
+  assert.equal(page.review({ ...row('a'), settlementId: 'settled' }, '반려'), false)
+})
+
+test('review failure preserves pending state and supports a reasonless retry', async () => {
+  const page = mount()
+  await page.respond(0, 200, [row('a')])
+  page.review(row('a'), '반려')
+  page.modal().onConfirm()
+  await page.respond(1, 500, {})
+  assert.equal(page.table().rows[0].status, 'pending')
+  assert.match(page.modal().description, /다시 시도/)
+  page.modal().onConfirm()
+  assert.equal(page.calls[2].url, '/api/v1/admin/mileage/applications/a/reject')
+  assert.deepEqual(JSON.parse(page.calls[2].options.body), { reviewVersion: row('a').reviewVersion })
+  await page.respond(2, 200, { ...row('a'), status: 'rejected' })
+  assert.equal(page.modal(), undefined)
+})
+
+test('conflict reloads current data and never retries review with an unseen version', async () => {
+  const page = mount()
+  await page.respond(0, 200, [row('a')])
+  page.review(row('a'), '반려')
+  const confirm = page.modal().onConfirm
+  confirm()
+  await page.respond(1, 409, { code: 'MILEAGE_REVIEW_CONFLICT' })
+  assert.equal(page.modal().actionLabel, '확인')
+  await page.respond(2, 200, [{ ...row('a'), status: 'approved' }])
+  confirm()
+  assert.equal(page.modal(), undefined)
+  assert.equal(page.calls.length, 3)
+})
+
+test('review callbacks after navigation cannot change the next screen or redirect it', async () => {
+  for (const status of [200, 401]) {
+    const page = mount()
+    await page.respond(0, 200, [row('a')])
+    page.review(row('a'), '승인')
+    const stale = page.modal().onConfirm
+    stale()
+    page.unmount()
+    page.window.location.hash = '#/settlements'
+    await page.respond(1, status, status === 200 ? { ...row('a'), status: 'approved' } : { code: 'INVALID_ADMIN_SESSION' })
+    stale()
+    assert.equal(page.calls.length, 2)
+    assert.equal(page.window.location.hash, '#/settlements')
+  }
+})
+
+test('review rejects malformed responses and does not report success for another application', async () => {
+  for (const value of [{ ...row('a'), reviewVersion: '' }, { ...row('a'), settlementId: undefined },
+    { ...row('b'), status: 'approved' }, { ...row('a'), status: 'approved' }, row('a')]) {
+    const page = mount()
+    const operation = page.api.reviewReceipt(row('a'), 'approve')
+    const result = assert.rejects(operation)
+    await page.respond(1, 200, value)
+    await result
+  }
+})
+
+test('review completion refreshes the latest filter without inserting an old row', async () => {
+  const page = mount()
+  await page.respond(0, 200, [row('a')])
+  page.review(row('a'), '승인')
+  page.modal().onConfirm()
+  page.change('SearchFilter', '기사 b')
+  await page.respond(2, 200, [row('a'), row('b')])
+  await page.respond(3, 200, [row('b')])
+  await page.respond(1, 200, { ...row('a'), status: 'approved', finalAmount: 10, mileageAmount: 20 })
+  page.render()
+  assert.match(page.calls[5].url, /nameQuery=/)
+  await page.respond(4, 200, [row('a'), row('b')])
+  await page.respond(5, 200, [row('b')])
+  assert.deepEqual(page.table().rows, [row('b')])
+})
+
+test('cancelled confirmation cannot submit and current review authentication failure redirects', async () => {
+  const page = mount()
+  await page.respond(0, 200, [row('a')])
+  page.review(row('a'), '반려')
+  const modal = page.modal()
+  modal.onCancel(); modal.onConfirm()
+  assert.equal(page.calls.length, 1)
+  page.review(row('a'), '반려')
+  page.modal().onConfirm()
+  await page.respond(1, 401, { code: 'INVALID_ADMIN_SESSION' })
+  assert.equal(page.window.location.hash, '/login')
 })
