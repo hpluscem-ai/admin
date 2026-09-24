@@ -14,7 +14,7 @@ const credentials = { email: ' admin@example.test ', password: ' Password!1 ' }
 
 function mount(path = '/drivers') {
   const calls = [], slots = [], effects = []
-  const window = { location: { hash: `#${path}` } }
+  const window = { location: { pathname: path } }
   const fetch = (url, options) => {
     const pending = Promise.withResolvers()
     calls.push({ url, options, ...pending })
@@ -55,13 +55,14 @@ function mount(path = '/drivers') {
     'LoginPage', 'LogisticsSettlementPage', 'ReceiptDataPage']) imports[`./pages/${name}`] = { [name]: name }
   const exports = {}
   new Function('require', 'exports', 'window', appSource)((name) => {
+    if (name.endsWith('/navigation')) return { navigate: (path) => { window.location.pathname = path } }
     assert.ok(name in imports, `Unexpected import ${name}`)
     return imports[name]
   }, exports, window)
   const page = {
     calls, auth,
     render() { index = 0; const tree = exports.default(); effects.splice(0).forEach((effect) => effect()); return tree },
-    navigate(path) { window.location.hash = `#${path}`; return page.render() },
+    navigate(path) { window.location.pathname = path; return page.render() },
     async respond(index, status = 200, data = admin) {
       calls[index].resolve(Response.json(data, { status }))
       await tick()

@@ -1,3 +1,4 @@
+import { navigate } from '../navigation'
 import { useEffect, useState } from 'react'
 import { AdminApiError, isInvalidAdminSession } from '../adminAuth'
 import { getStation, getStationValues, saveStation, STATIONS_LOAD_ERROR, type Station } from '../stations'
@@ -75,7 +76,7 @@ export function InfrastructureEditPage({
       if (active) setStation(loaded)
     }).catch((error: unknown) => {
       if (!active) return
-      if (isInvalidAdminSession(error)) window.location.hash = '/login'
+      if (isInvalidAdminSession(error)) navigate('/login')
       else setLoadError(error instanceof AdminApiError && error.status === 404
         ? '주유소를 찾을 수 없습니다.' : STATIONS_LOAD_ERROR)
     })

@@ -13,7 +13,7 @@ function nodes(tree, name) {
 const company = { id:'a',businessName:'물류',businessNumber:'123',corporateRegistrationNumber:'456',businessAddress:'서울',managerName:'담당자',managerPhone:'01012345678',bankCode:'4',accountNumber:'00123',accountHolder:'예금주',active:true,mileage:3000,transferStatus:'pending' }
 const data={ accumulatedMileage:3000,settlementMileage:4000,matchedCount:2,mismatchedCount:1,receipts:[],chart:[{date:'2026-08-01',common:3000,affiliation:1000}],affiliations:[{value:'a',label:'동일 이름'},{value:'b',label:'동일 이름'}] }
 function mount(page='LogisticsSettlementPage') {
- const calls=[],slots=[],effects=[],downloads=[],window={location:{hash:page==='DashboardPage'?'#/dashboard':'#/settlements'}};let index=0
+ const calls=[],slots=[],effects=[],downloads=[],window={location:{pathname:page==='DashboardPage'?'/dashboard':'/settlements'}};let index=0
  const imports={react:{
   useState(initial){const key=index++;if(!(key in slots))slots[key]=typeof initial==='function'?initial():initial;return[slots[key],value=>{slots[key]=typeof value==='function'?value(slots[key]):value}]},
   useRef(initial){const key=index++;if(!(key in slots))slots[key]={current:initial};return slots[key]},
@@ -21,7 +21,7 @@ function mount(page='LogisticsSettlementPage') {
  },'react/jsx-runtime':{jsx,jsxs:jsx}}
  const fetch=(url,options)=>{const pending=Promise.withResolvers();calls.push({url,options,...pending});return pending.promise}
  const document={createElement:()=>{const link={click(){downloads.push(link)}};return link}}
- function load(file){const exports={};new Function('require','exports','fetch','window','document',compiled[file])(name=>{if(name.endsWith('.svg'))return{default:name};assert.ok(name in imports,name);return imports[name]},exports,fetch,window,document);return exports}
+ function load(file){const exports={};new Function('require','exports','fetch','window','document',compiled[file])(name=>{if(name.endsWith('.svg'))return{default:name};if(name.endsWith('/navigation'))return{navigate:path=>{window.location.pathname=path}};assert.ok(name in imports,name);return imports[name]},exports,fetch,window,document);return exports}
  imports['./adminAuth']=imports['../adminAuth']=load('adminAuth.ts')
  imports['./data/bankCodeOptions']=load('data/bankCodeOptions.ts')
  imports['../utils/dateRange']=load('utils/dateRange.ts')
@@ -56,11 +56,11 @@ test('failed and malformed upload responses use the existing error cell and allo
  }
 })
 test('late file responses after leaving do not redirect, download or refresh another page',async()=>{
- const h=mount();await h.respond(0,200,[company]);upload(h);h.unmount();h.window.location.hash='#/drivers';await h.respond(1,401,{code:'INVALID_ADMIN_SESSION'})
- assert.equal(h.window.location.hash,'#/drivers');assert.equal(h.calls.length,2);assert.equal(h.downloads.length,0)
+ const h=mount();await h.respond(0,200,[company]);upload(h);h.unmount();h.window.location.pathname='/drivers';await h.respond(1,401,{code:'INVALID_ADMIN_SESSION'})
+ assert.equal(h.window.location.pathname,'/drivers');assert.equal(h.calls.length,2);assert.equal(h.downloads.length,0)
 })
 test('current file session expiry redirects and invalid XLS response never downloads a fake file',async()=>{
- const h=mount();await h.respond(0,200,[company]);upload(h);await h.respond(1,401,{code:'INVALID_ADMIN_SESSION'});assert.equal(h.window.location.hash,'/login')
+ const h=mount();await h.respond(0,200,[company]);upload(h);await h.respond(1,401,{code:'INVALID_ADMIN_SESSION'});assert.equal(h.window.location.pathname,'/login')
  const b=mount();await b.respond(0,200,[company]);nodes(b.render(),'button').find(n=>n.props.className==='floating-action').props.onClick();await b.respond(1,200,{}, {'Content-Type':'application/json'})
  assert.equal(b.downloads.length,0);assert.equal(table(b).rows.length,0)
 })
@@ -83,7 +83,7 @@ test('dashboard sends dates/company IDs to the server and renders server sums wi
 })
 test('dashboard ignores stale date/affiliation responses, including late expired sessions',async()=>{
  const h=mount('DashboardPage');nodes(h.render(),'DateRangeFilter')[0].props.onChange({start:'2026-08-01',end:'2026-08-31'});h.render()
- await h.respond(1,200,data);await h.respond(0,401,{code:'INVALID_ADMIN_SESSION'});assert.equal(h.window.location.hash,'#/dashboard');assert.equal(nodes(h.render(),'SummaryCard')[0].props.value,'3,000')
+ await h.respond(1,200,data);await h.respond(0,401,{code:'INVALID_ADMIN_SESSION'});assert.equal(h.window.location.pathname,'/dashboard');assert.equal(nodes(h.render(),'SummaryCard')[0].props.value,'3,000')
 })
 test('dashboard zeroes require a valid success and failure leaves chart lines unavailable',async()=>{
  const h=mount('DashboardPage');await h.respond(0,200,{...data,accumulatedMileage:0,settlementMileage:0,matchedCount:0,mismatchedCount:0,chart:[]})

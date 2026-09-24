@@ -1,3 +1,4 @@
+import { navigate } from '../navigation'
 import { useEffect, useRef, useState } from 'react'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { DataPageHeader } from '../components/DataPageHeader'
@@ -36,7 +37,7 @@ function getColumns(
           <a
             aria-label={`${row.station} 수정`}
             className="table-action table-action--brand"
-            href={`#/infrastructure/edit/${encodeURIComponent(row.id)}`}
+            href={`/infrastructure/edit/${encodeURIComponent(row.id)}`}
           >
             수정
           </a>
@@ -79,7 +80,7 @@ export function InfrastructureDataPage() {
       if (active && queryGeneration.current === generation) setStations(loaded)
     }).catch((error: unknown) => {
       if (!active || queryGeneration.current !== generation) return
-      if (isInvalidAdminSession(error)) window.location.hash = '/login'
+      if (isInvalidAdminSession(error)) navigate('/login')
       else setLoadError(STATIONS_LOAD_ERROR)
     })
     return () => { active = false }
@@ -94,8 +95,8 @@ export function InfrastructureDataPage() {
     const targetOwner = modalOwner.current
     const targetId = deleteTarget.id
     const generation = queryGeneration.current
-    const hash = window.location.hash
-    const isCurrent = () => lifetime.current === owner && window.location.hash === hash
+    const routePath = window.location.pathname
+    const isCurrent = () => lifetime.current === owner && window.location.pathname === routePath
     submitting.current = true
     setDeleteError('')
     try {
@@ -113,7 +114,7 @@ export function InfrastructureDataPage() {
     } catch (error) {
       if (!isCurrent()) return
       if (isInvalidAdminSession(error)) {
-        window.location.hash = '/login'
+        navigate('/login')
         return
       }
       if (modalOwner.current === targetOwner) {
@@ -147,7 +148,7 @@ export function InfrastructureDataPage() {
         rows={rows}
         getRowKey={(row) => row.id}
       />
-      <a className="floating-action" href="#/infrastructure/new">
+      <a className="floating-action" href="/infrastructure/new">
         <img src={packageIcon} alt="" />
         인프라 데이터 추가
       </a>

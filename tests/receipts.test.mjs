@@ -21,7 +21,7 @@ function find(node, type) {
 }
 function mount() {
   const calls = [], slots = [], effects = []
-  const window = { location: { hash: '#/receipts' } }
+  const window = { location: { pathname: '/receipts' } }
   let index = 0
   const react = {
     useRef(initial) { const key = index++; if (!(key in slots)) slots[key] = { current: initial }; return slots[key] },
@@ -47,6 +47,7 @@ function mount() {
     const exports = {}
     new Function('require', 'exports', 'fetch', 'window', sources[path])((name) => {
       if (name.endsWith('.svg')) return { default: name }
+      if (name.endsWith('/navigation')) return { navigate: (path) => { window.location.pathname = path } }
       assert.ok(name in imports, `Unexpected import ${name}`)
       return imports[name]
     }, exports, fetch, window)
@@ -116,7 +117,7 @@ test('filters send encoded names and company IDs while stale results cannot repl
   await page.respond(1, 200, [row('a')])
   await page.respond(2, 401, { code: 'INVALID_ADMIN_SESSION' })
   assert.deepEqual(page.table().rows, [row('b', 'company-b')])
-  assert.equal(page.window.location.hash, '#/receipts')
+  assert.equal(page.window.location.pathname, '/receipts')
 })
 
 test('empty, failed and malformed results are distinct and changing the query retries failed discovery', async () => {
@@ -140,13 +141,13 @@ test('empty, failed and malformed results are distinct and changing the query re
 test('current invalid session redirects while post-navigation responses have no effects', async () => {
   const current = mount()
   await current.respond(0, 401, { code: 'INVALID_ADMIN_SESSION' })
-  assert.equal(current.window.location.hash, '/login')
+  assert.equal(current.window.location.pathname, '/login')
   for (const [status, value] of [[200, [row('a')]], [401, { code: 'INVALID_ADMIN_SESSION' }]]) {
     const page = mount()
     page.unmount()
-    page.window.location.hash = '#/settlements'
+    page.window.location.pathname = '/settlements'
     await page.respond(0, status, value)
-    assert.equal(page.window.location.hash, '#/settlements')
+    assert.equal(page.window.location.pathname, '/settlements')
   }
 })
 
@@ -228,11 +229,11 @@ test('review callbacks after navigation cannot change the next screen or redirec
     const stale = page.modal().onConfirm
     stale()
     page.unmount()
-    page.window.location.hash = '#/settlements'
+    page.window.location.pathname = '/settlements'
     await page.respond(1, status, status === 200 ? { ...row('a'), status: 'approved' } : { code: 'INVALID_ADMIN_SESSION' })
     stale()
     assert.equal(page.calls.length, 2)
-    assert.equal(page.window.location.hash, '#/settlements')
+    assert.equal(page.window.location.pathname, '/settlements')
   }
 })
 
@@ -273,5 +274,5 @@ test('cancelled confirmation cannot submit and current review authentication fai
   page.review(row('a'), '반려')
   page.modal().onConfirm()
   await page.respond(1, 401, { code: 'INVALID_ADMIN_SESSION' })
-  assert.equal(page.window.location.hash, '/login')
+  assert.equal(page.window.location.pathname, '/login')
 })

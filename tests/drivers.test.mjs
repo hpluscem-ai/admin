@@ -21,7 +21,7 @@ function find(node, type) {
 }
 function mount() {
   const calls = [], slots = [], effects = []
-  const window = { location: { hash: '#/drivers' } }
+  const window = { location: { pathname: '/drivers' } }
   let index = 0
   const react = {
     useRef(initial) { const key = index++; if (!(key in slots)) slots[key] = { current: initial }; return slots[key] },
@@ -47,6 +47,7 @@ function mount() {
     const exports = {}
     new Function('require', 'exports', 'fetch', 'window', sources[path])((name) => {
       if (name.endsWith('.svg')) return { default: name }
+      if (name.endsWith('/navigation')) return { navigate: (path) => { window.location.pathname = path } }
       assert.ok(name in imports, `Unexpected import ${name}`)
       return imports[name]
     }, exports, fetch, window)
@@ -114,7 +115,7 @@ test('late filtered data or 401 cannot replace a newer successful query', async 
     await page.respond(2, 200, [driver('new')])
     await page.respond(1, status, status === 200 ? [driver('old')] : { code: 'INVALID_ADMIN_SESSION' })
     assert.deepEqual(page.table().rows, [driver('new')])
-    assert.equal(page.window.location.hash, '#/drivers')
+    assert.equal(page.window.location.pathname, '/drivers')
   }
 })
 
@@ -130,7 +131,7 @@ test('empty success differs from API, malformed and affiliation-discovery failur
     await page.respond(failedRequest, status, data)
     assert.match(page.table().emptyMessage, /불러오지 못했습니다/)
     assert.deepEqual(page.table().rows, [])
-    assert.equal(page.window.location.hash, '#/drivers')
+    assert.equal(page.window.location.pathname, '/drivers')
   }
   const offline = mount()
   await offline.respond(0, 200, [])
@@ -146,12 +147,12 @@ test('current 401 redirects, but responses after leaving the page do not', async
   for (const request of [0, 1]) {
     const active = mount()
     await active.respond(request, 401, { code: 'INVALID_ADMIN_SESSION' })
-    assert.equal(active.window.location.hash, '/login')
+    assert.equal(active.window.location.pathname, '/login')
     const stale = mount()
     stale.unmount()
-    stale.window.location.hash = '#/settlements'
+    stale.window.location.pathname = '/settlements'
     await stale.respond(request, 401, { code: 'INVALID_ADMIN_SESSION' })
-    assert.equal(stale.window.location.hash, '#/settlements')
+    assert.equal(stale.window.location.pathname, '/settlements')
   }
 })
 
@@ -262,17 +263,17 @@ test('late withdrawal success or 401 after navigation has no effect on the new s
     const page = await loadedPage()
     const pending = openWithdrawal(page).onConfirm()
     page.unmount()
-    page.window.location.hash = '#/settlements'
+    page.window.location.pathname = '/settlements'
     await page.respond(2, status, status === 401 ? { code: 'INVALID_ADMIN_SESSION' } : undefined)
     await pending
-    assert.equal(page.window.location.hash, '#/settlements')
+    assert.equal(page.window.location.pathname, '/settlements')
     assert.equal(page.calls.length, 3)
   }
   const current = await loadedPage()
   const pending = openWithdrawal(current).onConfirm()
   await current.respond(2, 401, { code: 'INVALID_ADMIN_SESSION' })
   await pending
-  assert.equal(current.window.location.hash, '/login')
+  assert.equal(current.window.location.pathname, '/login')
   assert.equal(current.table().rows.length, 2)
 })
 

@@ -11,6 +11,7 @@ import { LoginPage, type AdminLoginCredentials } from './pages/LoginPage'
 import { LogisticsCreatePage, LogisticsEditPage } from './pages/LogisticsFormPage'
 import { LogisticsSettlementPage } from './pages/LogisticsSettlementPage'
 import { ReceiptDataPage } from './pages/ReceiptDataPage'
+import { navigate } from './navigation'
 
 const routes = {
   '/dashboard': { activeMenu: '대시보드', Page: DashboardPage },
@@ -27,12 +28,12 @@ const infrastructureEditRoutePrefix = '/infrastructure/edit/'
 const logisticsEditRoutePrefix = '/settlements/edit/'
 
 function subscribeToRoute(callback: () => void) {
-  window.addEventListener('hashchange', callback)
-  return () => window.removeEventListener('hashchange', callback)
+  window.addEventListener('popstate', callback)
+  return () => window.removeEventListener('popstate', callback)
 }
 
 function getRoute() {
-  return window.location.hash.slice(1)
+  return window.location.pathname
 }
 
 function getRouteId(path: string, routePrefix: string) {
@@ -65,7 +66,7 @@ function App() {
     void getCurrentAdmin().then(() => {
       if (activeRequest.current !== current) return
       setSession({ path, status: 'signedIn' })
-      if (!path || path === '/login') window.location.hash = '/dashboard'
+      if (path === '/' || path === '/login') navigate('/dashboard')
     }).catch((error: unknown) => {
       if (activeRequest.current !== current) return
       const invalid = isInvalidAdminSession(error)

@@ -1,3 +1,4 @@
+import { navigate } from '../navigation'
 import { useEffect, useRef, useState } from 'react'
 import { AdminApiError, isInvalidAdminSession } from '../adminAuth'
 import { deactivateLogisticsCompany, LOGISTICS_LOAD_ERROR, type LogisticsCompany } from '../logisticsCompanies'
@@ -68,7 +69,7 @@ function getColumns(
           <a
             aria-label={`${row.businessName} 수정`}
             className="table-action table-action--brand"
-            href={row.active ? `#/settlements/edit/${encodeURIComponent(row.id)}` : undefined}
+            href={row.active ? `/settlements/edit/${encodeURIComponent(row.id)}` : undefined}
             aria-disabled={!row.active}
           >
             수정
@@ -116,7 +117,7 @@ export function LogisticsSettlementPage() {
     }).catch((error: unknown) => {
       if (loadOwner.current !== current) return
       if (isInvalidAdminSession(error)) {
-        window.location.hash = '/login'
+        navigate('/login')
         return
       }
       setLoadError(LOGISTICS_LOAD_ERROR)
@@ -130,8 +131,8 @@ export function LogisticsSettlementPage() {
   async function handleFile(file?: File) {
     if (fileSubmitting.current || !lifetime.current) return
     const owner = lifetime.current
-    const hash = window.location.hash
-    const isCurrent = () => lifetime.current === owner && window.location.hash === hash
+    const routePath = window.location.pathname
+    const isCurrent = () => lifetime.current === owner && window.location.pathname === routePath
     fileSubmitting.current = true
     setFileBusy(true)
     setLoadError('')
@@ -150,7 +151,7 @@ export function LogisticsSettlementPage() {
       if (isCurrent()) setRefresh(current => current + 1)
     } catch (error) {
       if (!isCurrent()) return
-      if (isInvalidAdminSession(error)) { window.location.hash = '/login'; return }
+      if (isInvalidAdminSession(error)) { navigate('/login'); return }
       loadOwner.current = null
       setCompanies(null)
       setLoadError(settlementError(error))
@@ -165,8 +166,8 @@ export function LogisticsSettlementPage() {
     const owner = lifetime.current
     const targetOwner = modalOwner.current
     const targetId = deactivationTarget.id
-    const hash = window.location.hash
-    const isCurrent = () => lifetime.current === owner && window.location.hash === hash
+    const routePath = window.location.pathname
+    const isCurrent = () => lifetime.current === owner && window.location.pathname === routePath
     submitting.current = true
     setDeactivationError('')
     try {
@@ -182,7 +183,7 @@ export function LogisticsSettlementPage() {
     } catch (error) {
       if (!isCurrent()) return
       if (isInvalidAdminSession(error)) {
-        window.location.hash = '/login'
+        navigate('/login')
         return
       }
       if (modalOwner.current === targetOwner) {
@@ -231,7 +232,7 @@ export function LogisticsSettlementPage() {
           <img src={packageIcon} alt="" />
           대량이체 엑셀 다운로드
         </button>
-        <a className="floating-action" href="#/settlements/new">
+        <a className="floating-action" href="/settlements/new">
           <img src={packageIcon} alt="" />
           물류사 데이터 추가
         </a>

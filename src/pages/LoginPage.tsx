@@ -1,3 +1,4 @@
+import { navigate } from '../navigation'
 import { useRef, useState, type FormEvent } from 'react'
 import logo from '../assets/hayan100-logo.png'
 import { Footer } from '../components/Footer'
@@ -86,7 +87,7 @@ export function LoginPage({ authenticate, requestFailed = false }: LoginPageProp
         return
       }
 
-      window.location.hash = '/dashboard'
+      navigate('/dashboard')
     } catch {
       setSubmitError(LOGIN_REQUEST_ERROR)
     } finally {

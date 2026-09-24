@@ -1,3 +1,4 @@
+import { navigate } from '../navigation'
 import { useEffect, useState } from 'react'
 import { DataPageHeader } from '../components/DataPageHeader'
 import {
@@ -85,7 +86,7 @@ function RecentReceiptCard({ receipts, message }: RecentReceiptCardProps) {
     <article className="recent-card">
       <div className="recent-card__header">
         <p className="recent-card__title">최근 영수 내역</p>
-        <a className="recent-card__link" href="#/receipts">전체 내역 보기 →</a>
+        <a className="recent-card__link" href="/receipts">전체 내역 보기 →</a>
       </div>
       {recentReceipts.length === 0 ? (
         <p className="recent-card__empty">{message || '선택한 기간의 영수 내역이 없습니다.'}</p>
@@ -285,16 +286,16 @@ export function DashboardPage() {
   const [loadError, setLoadError] = useState('')
   useEffect(() => {
     let current = true
-    const hash = window.location.hash
+    const routePath = window.location.pathname
     setDashboardView(null)
     setLoadError('')
     void getDashboard(dateRange, selectedAffiliation).then(data => {
-      if (!current || window.location.hash !== hash) return
+      if (!current || window.location.pathname !== routePath) return
       setDashboardView(data)
       setAffiliations(data.affiliations)
     }).catch((error: unknown) => {
-      if (!current || window.location.hash !== hash) return
-      if (isInvalidAdminSession(error)) { window.location.hash = '/login'; return }
+      if (!current || window.location.pathname !== routePath) return
+      if (isInvalidAdminSession(error)) { navigate('/login'); return }
       setLoadError('데이터를 불러오지 못했습니다. 조회 기간을 다시 선택해주세요.')
     })
     return () => { current = false }
@@ -316,7 +317,7 @@ export function DashboardPage() {
           />
           <SummaryCard
             label="정산 예정 마일리지"
-            linkHref="#/settlements"
+            linkHref="/settlements"
             unit="마일"
             value={value('settlementMileage')}
           />
@@ -327,7 +328,7 @@ export function DashboardPage() {
           />
           <SummaryCard
             label="미일치 영수 데이터"
-            linkHref="#/receipts"
+            linkHref="/receipts"
             unit="건"
             value={value('mismatchedCount')}
           />

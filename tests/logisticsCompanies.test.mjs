@@ -21,7 +21,7 @@ function find(node, type) {
 }
 function mount(kind = 'list', id = 'a') {
   const calls = [], slots = [], effects = []
-  const window = { location: { hash: '#/settlements' } }
+  const window = { location: { pathname: '/settlements' } }
   let index = 0, props = { id }
   const react = {
     useRef(initial) { const key = index++; if (!(key in slots)) slots[key] = { current: initial }; return slots[key] },
@@ -47,6 +47,7 @@ function mount(kind = 'list', id = 'a') {
     const exports = {}
     new Function('require', 'exports', 'fetch', 'window', sources[path])((name) => {
       if (name.endsWith('.svg')) return { default: name }
+      if (name.endsWith('/navigation')) return { navigate: (path) => { window.location.pathname = path } }
       assert.ok(name in imports, `Unexpected import ${name}`)
       return imports[name]
     }, exports, fetch, window)
@@ -94,7 +95,7 @@ test('real settlement list fields, bank names and zero mileage replace samples',
   assert.equal(table.getRowKey(table.rows[0]), 'a')
   assert.equal(table.columns.find(column => column.key === 'mileage').render(table.rows[0]), '0')
   assert.equal(table.columns.find(column => column.key === 'transferStatus').render(table.rows[0]), '-')
-  assert.equal(find(table.columns.find((column) => column.key === 'actions').render(table.rows[0]), 'a').props.href, '#/settlements/edit/a')
+  assert.equal(find(table.columns.find((column) => column.key === 'actions').render(table.rows[0]), 'a').props.href, '/settlements/edit/a')
   find(page.render(), 'SearchFilter').props.onChange(' ALPHA ')
   assert.deepEqual(find(page.render(), 'DataTable').props.rows.map(({ id }) => id), ['a'])
   const month = find(page.render(), 'DataPageHeader').props.children[1]
@@ -121,7 +122,7 @@ test('empty success, server failure, network failure and malformed data stay dis
   const failed = mount()
   await failed.respond(0, 500, { code: 'INTERNAL_SERVER_ERROR' })
   assert.equal(find(failed.render(), 'DataTable').props.emptyMessage, failed.api.LOGISTICS_LOAD_ERROR)
-  assert.equal(failed.window.location.hash, '#/settlements')
+  assert.equal(failed.window.location.pathname, '/settlements')
   const offline = mount()
   offline.calls[0].reject(new TypeError('offline'))
   await tick()
@@ -132,11 +133,11 @@ test('only a current invalid-session response redirects to login', async () => {
   for (const kind of ['list', 'detail']) {
     const active = mount(kind)
     await active.respond(0, 401, { code: 'INVALID_ADMIN_SESSION' })
-    assert.equal(active.window.location.hash, '/login')
+    assert.equal(active.window.location.pathname, '/login')
     const stale = mount(kind)
     stale.unmount()
     await stale.respond(0, 401, { code: 'INVALID_ADMIN_SESSION' })
-    assert.equal(stale.window.location.hash, '#/settlements')
+    assert.equal(stale.window.location.pathname, '/settlements')
   }
 })
 
@@ -173,7 +174,7 @@ test('a late detail response cannot replace the current company or invalidate it
     await page.respond(1, 200, company('b'))
     await page.respond(0, status, status === 200 ? company('a') : { code: 'INVALID_ADMIN_SESSION' })
     assert.equal(find(page.render(), 'LogisticsForm').props.initialValues.id, 'b')
-    assert.equal(page.window.location.hash, '#/settlements')
+    assert.equal(page.window.location.pathname, '/settlements')
   }
 })
 
@@ -187,7 +188,7 @@ test('create and update submit exactly nine DTO fields and navigate only after v
     const page = mount('form', id)
     find(page.render(), 'TextField').props.onChange({ target: { value: '수정 사업자' } })
     const pending = submit(page)
-    assert.equal(page.window.location.hash, '#/settlements')
+    assert.equal(page.window.location.pathname, '/settlements')
     const request = page.calls[0]
     assert.equal(request.url, `/api/v1/admin/logistics-companies${id ? '/a' : ''}`)
     assert.equal(request.options.method, id ? 'PUT' : 'POST')
@@ -203,7 +204,7 @@ test('create and update submit exactly nine DTO fields and navigate only after v
     assert.equal(page.calls.length, 1)
     await page.respond(0, id ? 200 : 201, company(id ?? 'new'))
     await pending
-    assert.equal(page.window.location.hash, '/settlements')
+    assert.equal(page.window.location.pathname, '/settlements')
   }
 })
 
@@ -219,12 +220,12 @@ test('save errors remain in the existing form error and allow retry', async () =
     await page.respond(0, status, { code })
     await pending
     assert.equal(find(page.render(), 'p').props.children, message)
-    assert.equal(page.window.location.hash, '#/settlements')
+    assert.equal(page.window.location.pathname, '/settlements')
     const retry = submit(page)
     assert.equal(page.calls.length, 2)
     await page.respond(1, 200, company('a'))
     await retry
-    assert.equal(page.window.location.hash, '/settlements')
+    assert.equal(page.window.location.pathname, '/settlements')
   }
 })
 
@@ -235,7 +236,7 @@ test('network and malformed success cannot claim that the company was saved', as
     if (failure === 'network') page.calls[0].reject(new TypeError('offline'))
     else await page.respond(0, failure === 'wrong-status' ? 201 : 200, failure === 'malformed' ? {} : company('a'))
     await pending
-    assert.equal(page.window.location.hash, '#/settlements')
+    assert.equal(page.window.location.pathname, '/settlements')
     assert.match(find(page.render(), 'p').props.children, /저장 중 오류/)
   }
 })
@@ -246,10 +247,10 @@ test('only current saves can redirect after success or session expiry', async ()
       const page = mount('form')
       const pending = submit(page)
       if (leave === 'unmount') page.unmount()
-      page.window.location.hash = '#/drivers'
+      page.window.location.pathname = '/drivers'
       await page.respond(0, status, status === 200 ? company('a') : { code: 'INVALID_ADMIN_SESSION' })
       await pending
-      assert.equal(page.window.location.hash, '#/drivers')
+      assert.equal(page.window.location.pathname, '/drivers')
       assert.equal(find(page.render(), 'p'), undefined)
     }
   }
@@ -257,7 +258,7 @@ test('only current saves can redirect after success or session expiry', async ()
   const pending = submit(active)
   await active.respond(0, 401, { code: 'INVALID_ADMIN_SESSION' })
   await pending
-  assert.equal(active.window.location.hash, '/login')
+  assert.equal(active.window.location.pathname, '/login')
 })
 
 test('existing field validation prevents invalid input from reaching the write API', async () => {
@@ -373,17 +374,17 @@ test('late deactivation responses after leaving cannot refresh or redirect; curr
     const page = await loadedCompanies()
     const pending = openDeactivate(page).onConfirm()
     page.unmount()
-    page.window.location.hash = '#/drivers'
+    page.window.location.pathname = '/drivers'
     await page.respond(1, status, status === 204 ? undefined : { code: 'INVALID_ADMIN_SESSION' })
     await pending
-    assert.equal(page.window.location.hash, '#/drivers')
+    assert.equal(page.window.location.pathname, '/drivers')
     assert.equal(page.calls.length, 2)
   }
   const current = await loadedCompanies()
   const pending = openDeactivate(current).onConfirm()
   await current.respond(1, 401, { code: 'INVALID_ADMIN_SESSION' })
   await pending
-  assert.equal(current.window.location.hash, '/login')
+  assert.equal(current.window.location.pathname, '/login')
   assert.equal(table(current).rows.length, 2)
 })
 
@@ -410,7 +411,7 @@ test('pending saves keep visible text and bank equal to the payload; failure unl
     assert.equal(JSON.parse(page.calls[1].options.body).bankCode, '11')
     await page.respond(1, id ? 200 : 201, { ...company(id ?? 'new', '재시도 사업자'), bankCode: '11' })
     await retry
-    assert.equal(page.window.location.hash, '/settlements')
+    assert.equal(page.window.location.pathname, '/settlements')
     assert.equal(page.calls.length, 2)
   }
 })

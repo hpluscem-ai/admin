@@ -1,3 +1,4 @@
+import { navigate } from '../navigation'
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 
 import { isInvalidAdminSession } from '../adminAuth'
@@ -255,8 +256,8 @@ export function InfrastructureForm({
     }
 
     const owner = lifetime.current
-    const hash = window.location.hash
-    const isCurrent = () => lifetime.current === owner && window.location.hash === hash
+    const routePath = window.location.pathname
+    const isCurrent = () => lifetime.current === owner && window.location.pathname === routePath
     submitting.current = true
     setSaving(true)
     try {
@@ -268,11 +269,11 @@ export function InfrastructureForm({
         return
       }
 
-      window.location.hash = '/infrastructure'
+      navigate('/infrastructure')
     } catch (error) {
       if (!isCurrent()) return
       if (isInvalidAdminSession(error)) {
-        window.location.hash = '/login'
+        navigate('/login')
         return
       }
       setSubmitError('인프라 데이터 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.')

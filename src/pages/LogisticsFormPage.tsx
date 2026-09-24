@@ -1,3 +1,4 @@
+import { navigate } from '../navigation'
 import { useEffect, useState } from 'react'
 import { AdminApiError, isInvalidAdminSession } from '../adminAuth'
 import { getLogisticsCompany, saveLogisticsCompany, LOGISTICS_LOAD_ERROR, type LogisticsCompany } from '../logisticsCompanies'
@@ -73,7 +74,7 @@ export function LogisticsEditPage({ id, save }: LogisticsEditPageProps) {
     }).catch((error: unknown) => {
       if (!active) return
       if (isInvalidAdminSession(error)) {
-        window.location.hash = '/login'
+        navigate('/login')
         return
       }
       setLoadError(error instanceof AdminApiError && error.status === 404

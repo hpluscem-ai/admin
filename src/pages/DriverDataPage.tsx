@@ -1,3 +1,4 @@
+import { navigate } from '../navigation'
 import { useEffect, useRef, useState } from 'react'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { DataPageHeader } from '../components/DataPageHeader'
@@ -71,7 +72,7 @@ export function DriverDataPage() {
         { value: driver.logisticsCompanyId, label: driver.logisticsCompanyName }])).values()))
     }).catch((error: unknown) => {
       if (!active) return
-      if (isInvalidAdminSession(error)) window.location.hash = '/login'
+      if (isInvalidAdminSession(error)) navigate('/login')
       else setAffiliationError(DRIVERS_LOAD_ERROR)
     })
     return () => { active = false }
@@ -85,7 +86,7 @@ export function DriverDataPage() {
       if (active && queryGeneration.current === generation) setDrivers(loaded)
     }).catch((error: unknown) => {
       if (!active || queryGeneration.current !== generation) return
-      if (isInvalidAdminSession(error)) window.location.hash = '/login'
+      if (isInvalidAdminSession(error)) navigate('/login')
       else setLoadError(DRIVERS_LOAD_ERROR)
     })
     return () => { active = false }
@@ -97,8 +98,8 @@ export function DriverDataPage() {
     const targetOwner = modalOwner.current
     const targetId = withdrawalTarget.id
     const generation = queryGeneration.current
-    const hash = window.location.hash
-    const isCurrent = () => lifetime.current === owner && window.location.hash === hash
+    const routePath = window.location.pathname
+    const isCurrent = () => lifetime.current === owner && window.location.pathname === routePath
     submitting.current = true
     setWithdrawalError('')
     try {
@@ -116,7 +117,7 @@ export function DriverDataPage() {
     } catch (error) {
       if (!isCurrent()) return
       if (isInvalidAdminSession(error)) {
-        window.location.hash = '/login'
+        navigate('/login')
         return
       }
       if (modalOwner.current === targetOwner) {

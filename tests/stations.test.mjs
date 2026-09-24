@@ -25,7 +25,7 @@ function all(node, type) {
 }
 function mount(kind = 'list', id = 'a') {
   const calls = [], slots = [], effects = []
-  const window = { location: { hash: '#/infrastructure' } }
+  const window = { location: { pathname: '/infrastructure' } }
   let index = 0, props = { id }
   const react = {
     useRef(initial) { const key = index++; if (!(key in slots)) slots[key] = { current: initial }; return slots[key] },
@@ -51,6 +51,7 @@ function mount(kind = 'list', id = 'a') {
     const exports = {}
     new Function('require', 'exports', 'fetch', 'window', sources[path])((name) => {
       if (name.endsWith('.svg')) return { default: name }
+      if (name.endsWith('/navigation')) return { navigate: (path) => { window.location.pathname = path } }
       assert.ok(name in imports, `Unexpected import ${name}`)
       return imports[name]
     }, exports, fetch, window)
@@ -112,7 +113,7 @@ test('all device models and capacities, negative coordinates and real IDs reach 
   assert.equal(rows[0].latitude, '-35.5')
   assert.equal(rows[0].longitude, '-127.25')
   assert.equal(columns.find(({ key }) => key === 'note').render(rows[0]), '-')
-  assert.equal(find(columns.find(({ key }) => key === 'actions').render(rows[0]), 'a').props.href, '#/infrastructure/edit/a')
+  assert.equal(find(columns.find(({ key }) => key === 'actions').render(rows[0]), 'a').props.href, '/infrastructure/edit/a')
   const date = new Date(station().createdAt)
   assert.equal(columns.find(({ key }) => key === 'registeredAt').render(rows[0]), `${date.getFullYear()}. ${String(date.getMonth() + 1).padStart(2, '0')}. ${String(date.getDate()).padStart(2, '0')}`)
 })
@@ -186,15 +187,15 @@ test('late list/detail responses and departed-page 401 cannot overwrite current 
     else page.changeId('b')
     await page.respond(1, 200, kind === 'list' ? [station('b')] : station('b'))
     await page.respond(0, 401, { code: 'INVALID_ADMIN_SESSION' })
-    assert.equal(page.window.location.hash, '#/infrastructure')
+    assert.equal(page.window.location.pathname, '/infrastructure')
     assert.equal(kind === 'list' ? page.table().rows[0].station : find(page.render(), 'InfrastructureForm').props.initialValues.station, '주유소 b')
     const departed = mount(kind)
     departed.unmount()
     await departed.respond(0, 401, { code: 'INVALID_ADMIN_SESSION' })
-    assert.equal(departed.window.location.hash, '#/infrastructure')
+    assert.equal(departed.window.location.pathname, '/infrastructure')
     const current = mount(kind)
     await current.respond(0, 401, { code: 'INVALID_ADMIN_SESSION' })
-    assert.equal(current.window.location.hash, '/login')
+    assert.equal(current.window.location.pathname, '/login')
   }
 })
 
@@ -303,17 +304,17 @@ test('departed-page delete responses cannot refresh or redirect the new screen; 
     const page = await loadedPage()
     const pending = openDelete(page).onConfirm()
     page.unmount()
-    page.window.location.hash = '#/drivers'
+    page.window.location.pathname = '/drivers'
     await page.respond(1, status, status === 204 ? undefined : { code: 'INVALID_ADMIN_SESSION' })
     await pending
-    assert.equal(page.window.location.hash, '#/drivers')
+    assert.equal(page.window.location.pathname, '/drivers')
     assert.equal(page.calls.length, 2)
   }
   const current = await loadedPage()
   const pending = openDelete(current).onConfirm()
   await current.respond(1, 401, { code: 'INVALID_ADMIN_SESSION' })
   await pending
-  assert.equal(current.window.location.hash, '/login')
+  assert.equal(current.window.location.pathname, '/login')
   assert.equal(current.table().rows.length, 2)
 })
 
@@ -405,13 +406,13 @@ test('form blocks duplicate submits and input loss with the existing shared subm
   assert.equal(all(render(), 'TextField').find(({ props }) => props.name === 'station').props.value, '저장할 이름')
   await page.respond(1, 500, { code: 'INTERNAL_SERVER_ERROR' })
   await pending
-  assert.equal(page.window.location.hash, '#/infrastructure')
+  assert.equal(page.window.location.pathname, '/infrastructure')
   assert.match(find(render(), 'p').props.children, /저장 중 오류/)
   assert.ok(all(render(), 'TextField').every(({ props }) => !props.disabled))
   const retry = render().props.onSubmit({ preventDefault() {} })
   await page.respond(2, 200, item)
   await retry
-  assert.equal(page.window.location.hash, '/infrastructure')
+  assert.equal(page.window.location.pathname, '/infrastructure')
 })
 
 test('late save responses cannot redirect another page; only current expired sessions redirect', async () => {
@@ -421,10 +422,10 @@ test('late save responses cannot redirect another page; only current expired ses
       const item = singleStation()
       const render = page.form(valuesFor(page), (values) => page.api.saveStation(values, item))
       const pending = render().props.onSubmit({ preventDefault() {} })
-      if (departed) { render.unmount(); page.window.location.hash = '#/drivers' }
+      if (departed) { render.unmount(); page.window.location.pathname = '/drivers' }
       await page.respond(1, status, status === 200 ? item : { code: 'INVALID_ADMIN_SESSION' })
       await pending
-      assert.equal(page.window.location.hash, departed ? '#/drivers' : status === 200 ? '/infrastructure' : '/login')
+      assert.equal(page.window.location.pathname, departed ? '/drivers' : status === 200 ? '/infrastructure' : '/login')
     }
   }
 })

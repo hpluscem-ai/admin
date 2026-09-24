@@ -1,3 +1,4 @@
+import { navigate } from '../navigation'
 import { useEffect, useRef, useState } from 'react'
 import chevronDownIcon from '../assets/chevron-down.svg'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
@@ -92,7 +93,7 @@ export function ReceiptDataPage() {
       setRows(matchingRows)
     }).catch((error: unknown) => {
       if (!active || generation !== queryGeneration.current) return
-      if (isInvalidAdminSession(error)) window.location.hash = '/login'
+      if (isInvalidAdminSession(error)) navigate('/login')
       else setLoadError(RECEIPTS_LOAD_ERROR)
     })
     return () => { active = false }
@@ -107,9 +108,9 @@ export function ReceiptDataPage() {
     if (!review || modalOwner.current !== review || submitting.current || !lifetime.current) return
     if (conflictedReview.current === review) { closeReview(); return }
     const owner = lifetime.current
-    const hash = window.location.hash
+    const routePath = window.location.pathname
     const generation = queryGeneration.current
-    const isCurrent = () => lifetime.current === owner && window.location.hash === hash
+    const isCurrent = () => lifetime.current === owner && window.location.pathname === routePath
     const reload = () => { ++queryGeneration.current; setRefresh((value) => value + 1) }
     submitting.current = true
     setReviewError('')
@@ -121,7 +122,7 @@ export function ReceiptDataPage() {
       if (modalOwner.current === review) closeReview()
     } catch (error) {
       if (!isCurrent()) return
-      if (isInvalidAdminSession(error)) { window.location.hash = '/login'; return }
+      if (isInvalidAdminSession(error)) { navigate('/login'); return }
       const conflict = error instanceof AdminApiError && (error.status === 409 || error.status === 404)
       if (modalOwner.current === review) {
         if (conflict) conflictedReview.current = review
@@ -182,7 +183,7 @@ function ReceiptPhotoDialog({ target, onClose }: { target: PhotoTarget; onClose:
       setUrl(objectUrl)
     }).catch((failure: unknown) => {
       if (!active) return
-      if (isInvalidAdminSession(failure)) window.location.hash = '/login'
+      if (isInvalidAdminSession(failure)) navigate('/login')
       else setError('사진을 불러오지 못했습니다. 다시 시도해주세요.')
     })
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl) }
