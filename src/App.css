@@ -435,6 +435,42 @@
   width: 100%;
 }
 
+.confirmation-dialog:has(.receipt-rejection-fields) {
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  justify-content: flex-start;
+}
+
+.confirmation-dialog:has(.receipt-rejection-fields) > * {
+  flex-shrink: 0;
+}
+
+.receipt-rejection-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.receipt-rejection-chip {
+  flex: 0 0 calc((100% - 8px) / 2);
+  border: 0;
+  border-radius: 26px;
+  padding: 4px 12px;
+  background: var(--color-gray-100);
+  color: var(--color-gray-800);
+  font: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.form-field.receipt-rejection-reason {
+  height: auto;
+  padding: 16px;
+  resize: none;
+  overflow-y: hidden;
+}
+
 .confirmation-dialog__actions {
   display: flex;
   gap: 8px;

@@ -13,6 +13,7 @@ const row = (id, company = 'company-a') => ({ id, userId: 'user-' + id, logistic
   reviewVersion: 'a'.repeat(64), settlementId: null,
   logisticsCompanyName: '같은 회사명', name: '기사 ' + id, phone: '010-1234-5678', receiptAmount: null,
   meterAmount: null, finalAmount: null, mileageAmount: null, receiptAt: null, status: 'pending',
+  rejectionReason: null,
   matchStatus: 'pending', photos: { receipt: `/api/v1/admin/mileage/applications/${id}/photos/receipt`, meter: null } })
 function find(node, type, predicate = () => true) {
   if (!node || typeof node !== 'object') return undefined
@@ -66,6 +67,11 @@ function mount() {
     table() { return find(page.render(), 'DataTable').props },
     modal() { return find(page.render(), 'ConfirmationDialog')?.props },
     field(name) { return find(page.render(), 'TextField', (node) => node.props.name === name)?.props },
+    reason(value) {
+      const field = find(page.render(), 'textarea').props
+      if (value !== undefined) field.onChange({ currentTarget: { value } })
+      return find(page.render(), 'textarea').props
+    },
     input(name, value, selectionStart = value.length) {
       const input = {
         get value() { return value },
@@ -241,10 +247,11 @@ test('approval sends confirmed amount and decimal liters, locks edits and update
   assert.equal(page.review({ ...row('a'), settlementId: 'settled' }, '반려'), false)
 })
 
-test('review failure preserves pending state and supports a reasonless retry', async () => {
+test('review failure preserves pending state and retries the entered rejection reason', async () => {
   const page = mount()
   await page.respond(0, 200, [row('a')])
   page.review(row('a'), '반려')
+  page.reason('사진을 다시 확인해주세요.')
   assert.equal(page.field('finalAmount'), undefined)
   page.modal().onConfirm()
   await page.respond(1, 500, {})
@@ -252,8 +259,9 @@ test('review failure preserves pending state and supports a reasonless retry', a
   assert.match(page.modal().description, /다시 시도/)
   page.modal().onConfirm()
   assert.equal(page.calls[2].url, '/api/v1/admin/mileage/applications/a/reject')
-  assert.deepEqual(JSON.parse(page.calls[2].options.body), { reviewVersion: row('a').reviewVersion })
-  await page.respond(2, 200, { ...row('a'), status: 'rejected' })
+  assert.deepEqual(JSON.parse(page.calls[2].options.body), { reviewVersion: row('a').reviewVersion, rejectionReason: '사진을 다시 확인해주세요.' })
+  assert.equal(page.reason().value, '사진을 다시 확인해주세요.')
+  await page.respond(2, 200, { ...row('a'), status: 'rejected', rejectionReason: '사진을 다시 확인해주세요.' })
   assert.equal(page.modal(), undefined)
 })
 
@@ -261,6 +269,7 @@ test('conflict reloads current data and never retries review with an unseen vers
   const page = mount()
   await page.respond(0, 200, [row('a')])
   page.review(row('a'), '반려')
+  page.reason('사진을 다시 확인해주세요.')
   const confirm = page.modal().onConfirm
   confirm()
   await page.respond(1, 409, { code: 'MILEAGE_REVIEW_CONFLICT' })
@@ -401,7 +410,56 @@ test('cancelled confirmation cannot submit and current review authentication fai
   modal.onCancel(); modal.onConfirm()
   assert.equal(page.calls.length, 1)
   page.review(row('a'), '반려')
+  page.reason('사진 확인 필요')
   page.modal().onConfirm()
   await page.respond(1, 401, { code: 'INVALID_ADMIN_SESSION' })
   assert.equal(page.window.location.pathname, '/login')
+})
+
+test('rejection requires a reason, replaces it from chips, caps length and clears it for the next application', async () => {
+  const page = mount()
+  await page.respond(0, 200, [row('a'), row('b')])
+  page.review(row('a'), '반려')
+  assert.equal(page.reason().maxLength, 150)
+  assert.equal(page.reason().required, true)
+  for (const reason of ['', ' \n ', '가'.repeat(151)]) {
+    page.reason(reason)
+    await page.modal().onConfirm()
+    assert.equal(page.calls.length, 1)
+    assert.match(page.modal().description, /150자/)
+  }
+  const chip = label => find(page.render(), 'button', node => node.props.children === label).props
+  chip('금액 불일치').onClick()
+  assert.equal(page.reason().value, '영수증 금액과 계기판 금액이 일치하지 않습니다. 다시 확인 후, 등록해주세요.')
+  chip('중복 신청').onClick()
+  assert.equal(page.reason().value, '이미 등록된 거래와 중복된 신청입니다. 신청 내역을 확인해주세요.')
+  const reason = '가'.repeat(148) + '\n나'
+  page.reason(reason)
+  const confirm = page.modal().onConfirm
+  confirm(); confirm()
+  assert.equal(page.calls.length, 2)
+  assert.equal(page.reason().disabled, true)
+  assert.equal(chip('중복 신청').disabled, true)
+  assert.equal(JSON.parse(page.calls[1].options.body).rejectionReason, reason)
+  await page.respond(1, 200, { ...row('a'), status: 'rejected', rejectionReason: reason })
+  assert.equal(page.modal(), undefined)
+  page.review(row('b'), '반려')
+  assert.equal(page.reason().value, '')
+  page.unmount()
+})
+
+test('rejection sends trimmed text and refuses a successful response with a different reason', async () => {
+  const page = mount()
+  for (const rejectionReason of ['', ' \n ', '가'.repeat(151)]) {
+    await assert.rejects(page.api.reviewReceipt(row('a'), 'reject', { rejectionReason }))
+  }
+  assert.equal(page.calls.length, 1)
+  const result = page.api.reviewReceipt(row('a'), 'reject', { rejectionReason: '  사진 확인\n재등록 요청  ' })
+  const rejected = assert.rejects(result)
+  assert.deepEqual(JSON.parse(page.calls[1].options.body), {
+    reviewVersion: row('a').reviewVersion, rejectionReason: '사진 확인\n재등록 요청',
+  })
+  await page.respond(1, 200, { ...row('a'), status: 'rejected', rejectionReason: null })
+  await rejected
+  page.unmount()
 })

@@ -16,6 +16,7 @@ export type Receipt = {
   receiptAt: string | null
   matchStatus: 'pending' | 'matched' | 'mismatched' | 'ocr_failed' | 'duplicate_suspected'
   status: 'pending' | 'approved' | 'rejected'
+  rejectionReason: string | null
   photos: { receipt: string | null; meter: string | null }
 }
 
@@ -42,6 +43,7 @@ function parseReceipt(value: unknown): Receipt {
     (row.phone !== null && (typeof row.phone !== 'string' || !row.phone.trim())) ||
     (row.receiptAt !== null && (typeof row.receiptAt !== 'string' || !Number.isFinite(Date.parse(row.receiptAt)))) ||
     !['pending', 'approved', 'rejected'].includes(row.status as string) ||
+    (row.rejectionReason !== null && typeof row.rejectionReason !== 'string') ||
     !['pending', 'matched', 'mismatched', 'ocr_failed', 'duplicate_suspected'].includes(row.matchStatus as string) ||
     typeof row.photos !== 'object' || row.photos === null || Array.isArray(row.photos)) throw new Error(RECEIPTS_LOAD_ERROR)
   const photos = row.photos as Record<string, unknown>
@@ -50,19 +52,23 @@ function parseReceipt(value: unknown): Receipt {
       throw new Error(RECEIPTS_LOAD_ERROR)
     }
   }
-  return Object.fromEntries([...texts, ...amounts, 'reviewVersion', 'settlementId', 'phone', 'receiptAt', 'status', 'matchStatus', 'photos']
+  return Object.fromEntries([...texts, ...amounts, 'reviewVersion', 'settlementId', 'phone', 'receiptAt', 'status', 'rejectionReason', 'matchStatus', 'photos']
     .map((field) => [field, row[field]])) as Receipt
 }
 
 export async function reviewReceipt(receipt: Pick<Receipt, 'id' | 'reviewVersion'>, action: 'approve' | 'reject',
-  approval?: { finalAmount: number; liters: string }): Promise<Receipt> {
+  input: { finalAmount: number; liters: string } | { rejectionReason: string }): Promise<Receipt> {
+  const approval = 'finalAmount' in input ? input : undefined
+  const rejectionReason = 'rejectionReason' in input ? input.rejectionReason.trim() : undefined
   if (action === 'approve' && !approval) throw new Error('확정 금액과 주유량을 입력해주세요.')
+  if (action === 'reject' && (!rejectionReason || rejectionReason.length > 150)) throw new Error('반려 사유를 150자 이내로 입력해주세요.')
   const data = await requestAdmin(`mileage/applications/${encodeURIComponent(receipt.id)}/${action}`, {
-    method: 'POST', body: { reviewVersion: receipt.reviewVersion, ...(action === 'approve' ? approval : {}) },
+    method: 'POST', body: { reviewVersion: receipt.reviewVersion, ...(action === 'approve' ? approval : { rejectionReason }) },
   })
   const result = parseReceipt(data)
   if (result.id !== receipt.id || result.reviewVersion !== receipt.reviewVersion ||
     result.status !== (action === 'approve' ? 'approved' : 'rejected') ||
+    (action === 'reject' && result.rejectionReason !== rejectionReason) ||
     (action === 'approve' && (result.finalAmount !== approval?.finalAmount || result.mileageAmount === null))) throw new Error('심사 결과를 확인하지 못했습니다. 다시 시도해주세요.')
   return result
 }

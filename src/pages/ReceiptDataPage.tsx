@@ -14,6 +14,13 @@ const statusNames = { approved: '승인', pending: '대기', rejected: '반려' 
 const amount = (value: number | null) => value === null ? '-' : value.toLocaleString('ko-KR')
 const APPROVAL_AMOUNT_ERROR = '확정 금액은 0 이상의 정수로 입력해주세요.'
 const APPROVAL_LITERS_ERROR = '주유량은 정수 5자리, 소수점 3자리 이내의 숫자로 입력해주세요.'
+const REJECTION_REASON_ERROR = '반려 사유를 150자 이내로 입력해주세요.'
+const rejectionPresets = [
+  { label: '금액 불일치', reason: '영수증 금액과 계기판 금액이 일치하지 않습니다. 다시 확인 후, 등록해주세요.' },
+  { label: '사진 판독 불가', reason: '사진이 흐리거나 반사되어 내용을 확인하기 어렵습니다. 선명하게 촬영해 다시 등록해주세요.' },
+  { label: '중복 신청', reason: '이미 등록된 거래와 중복된 신청입니다. 신청 내역을 확인해주세요.' },
+  { label: '필수 사진 누락', reason: '영수증 또는 계기판 내용이 보이지 않습니다. 두 내용이 모두 보이도록 다시 등록해주세요.' },
+]
 
 function formatApprovalInput(value: string, decimal = false) {
   const [integer, ...fraction] = value.replace(decimal ? /[^\d.]/g : /\D/g, '').split('.')
@@ -76,6 +83,8 @@ export function ReceiptDataPage() {
   const [reviewError, setReviewError] = useState('')
   const [reviewConflict, setReviewConflict] = useState(false)
   const [approvalValues, setApprovalValues] = useState({ finalAmount: '', liters: '' })
+  const [rejectionReason, setRejectionReason] = useState('')
+  const rejectionInput = useRef<HTMLTextAreaElement>(null)
   const [reviewSubmitting, setReviewSubmitting] = useState(false)
   const [refresh, setRefresh] = useState(0)
   const lifetime = useRef<object | null>(null)
@@ -83,6 +92,13 @@ export function ReceiptDataPage() {
   const conflictedReview = useRef<ReviewTarget | null>(null)
   const submitting = useRef(false)
   const queryGeneration = useRef(0)
+
+  useEffect(() => {
+    const input = rejectionInput.current
+    if (!input) return
+    input.style.height = 'auto'
+    input.style.height = `${input.scrollHeight}px`
+  }, [rejectionReason, review])
 
   useEffect(() => {
     lifetime.current = {}
@@ -142,6 +158,8 @@ export function ReceiptDataPage() {
       if (!/^\d{1,5}(?:\.\d{1,3})?$/.test(liters)) {
         setReviewError(APPROVAL_LITERS_ERROR); return
       }
+    } else if (!rejectionReason.trim() || rejectionReason.trim().length > 150) {
+      setReviewError(REJECTION_REASON_ERROR); return
     }
     const owner = lifetime.current
     const routePath = window.location.pathname
@@ -153,7 +171,7 @@ export function ReceiptDataPage() {
     setReviewError('')
     try {
       const updated = await reviewReceipt(review.receipt, review.action,
-        review.action === 'approve' ? { finalAmount, liters } : undefined)
+        review.action === 'approve' ? { finalAmount, liters } : { rejectionReason })
       if (!isCurrent()) return
       if (generation === queryGeneration.current) setRows((current) => current?.map((row) => row.id === updated.id ? updated : row) ?? null)
       reload()
@@ -184,6 +202,7 @@ export function ReceiptDataPage() {
       <DataTable columns={getColumns(setPhoto, (target) => {
         if (submitting.current) return
         setApprovalValues({ finalAmount: '', liters: '' })
+        setRejectionReason('')
         modalOwner.current = target; setReviewError(''); setReviewConflict(false); setReview(target)
       }, review !== null || reviewSubmitting)} rows={rows ?? []} getRowKey={(row) => row.id}
         emptyMessage={loadError || (rows === null || affiliations === null
@@ -211,6 +230,23 @@ export function ReceiptDataPage() {
               disabled={reviewSubmitting || reviewConflict} value={approvalValues.liters}
               aria-invalid={reviewError === APPROVAL_LITERS_ERROR}
               onChange={(event) => handleApprovalInput(event.currentTarget, 'liters')} />
+          </div>
+        </div>}
+        {review.action === 'reject' && <div className="form-fields receipt-rejection-fields">
+          <div className="receipt-rejection-chips">
+            {rejectionPresets.map(preset => <button key={preset.label} type="button"
+              className="receipt-rejection-chip" disabled={reviewSubmitting || reviewConflict}
+              onClick={() => { setRejectionReason(preset.reason); setReviewError('') }}>
+              {preset.label}
+            </button>)}
+          </div>
+          <div className="form-control">
+            <label className="form-field-label" htmlFor="receipt-rejection-reason">반려 사유 · 최대 150자</label>
+            <textarea ref={rejectionInput} id="receipt-rejection-reason" name="rejectionReason"
+              className="form-field receipt-rejection-reason" rows={3} maxLength={150} required
+              disabled={reviewSubmitting || reviewConflict} value={rejectionReason}
+              aria-invalid={reviewError === REJECTION_REASON_ERROR}
+              onChange={event => { setRejectionReason(event.currentTarget.value); setReviewError('') }} />
           </div>
         </div>}
       </ConfirmationDialog>}
