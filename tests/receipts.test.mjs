@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import ts from 'typescript'
 
-const sources = Object.fromEntries(['adminAuth.ts', 'receipts.ts', 'pages/ReceiptDataPage.tsx'].map((path) => [path,
+const sources = Object.fromEntries(['adminAuth.ts', 'receipts.ts', 'components/StatusSelect.tsx', 'pages/ReceiptDataPage.tsx'].map((path) => [path,
   ts.transpileModule(readFileSync(new URL(`../src/${path}`, import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
   }).outputText]))
@@ -14,10 +14,10 @@ const row = (id, company = 'company-a') => ({ id, userId: 'user-' + id, logistic
   logisticsCompanyName: '같은 회사명', name: '기사 ' + id, phone: '010-1234-5678', receiptAmount: null,
   meterAmount: null, finalAmount: null, mileageAmount: null, receiptAt: null, status: 'pending',
   matchStatus: 'pending', photos: { receipt: `/api/v1/admin/mileage/applications/${id}/photos/receipt`, meter: null } })
-function find(node, type) {
+function find(node, type, predicate = () => true) {
   if (!node || typeof node !== 'object') return undefined
-  if (node.type === type) return node
-  return [node.props?.children].flat(Infinity).map((child) => find(child, type)).find(Boolean)
+  if (node.type === type && predicate(node)) return node
+  return [node.props?.children].flat(Infinity).map((child) => find(child, type, predicate)).find(Boolean)
 }
 function mount() {
   const calls = [], slots = [], effects = []
@@ -55,7 +55,9 @@ function mount() {
   }
   imports['./adminAuth'] = imports['../adminAuth'] = load('adminAuth.ts')
   imports['../receipts'] = load('receipts.ts')
+  imports['../components/StatusSelect'] = load('components/StatusSelect.tsx')
   imports['../components/PageFilters'] = { AffiliationFilter: 'AffiliationFilter', SearchFilter: 'SearchFilter' }
+  imports['../components/FormControls'] = { TextField: 'TextField' }
   for (const name of ['DataPageHeader', 'DataTable', 'ConfirmationDialog']) imports[`../components/${name}`] = { [name]: name }
   const { ReceiptDataPage } = load('pages/ReceiptDataPage.tsx')
   const page = {
@@ -63,17 +65,33 @@ function mount() {
     render() { index = 0; const tree = ReceiptDataPage(); effects.splice(0).forEach((effect) => effect()); return tree },
     table() { return find(page.render(), 'DataTable').props },
     modal() { return find(page.render(), 'ConfirmationDialog')?.props },
-    review(receipt, action) {
-      const node = page.table().columns.find(column => column.key === 'status').render(receipt)
-      const rendered = typeof node.type === 'function' ? node.type(node.props) : node
-      function click(node) {
-        if (!node || typeof node !== 'object') return undefined
-        if (node?.type === 'button' && node.props.children === action) return node.props.onClick
-        return [node?.props?.children].flat(Infinity).map(click).find(Boolean)
+    field(name) { return find(page.render(), 'TextField', (node) => node.props.name === name)?.props },
+    input(name, value, selectionStart = value.length) {
+      const input = {
+        get value() { return value },
+        set value(next) { value = next; input.selectionStart = next.length },
+        selectionStart,
+        setSelectionRange(start) { input.selectionStart = start },
       }
-      const handler = click(rendered)
-      handler?.()
-      return Boolean(handler)
+      page.field(name).onChange({ target: input, currentTarget: input })
+      const formatted = page.field(name).value
+      if (input.value !== formatted) input.value = formatted
+      return input
+    },
+    approval(finalAmount = '1234', liters = '5.125') {
+      for (const [name, value] of [['finalAmount', finalAmount], ['liters', liters]]) {
+        page.input(name, value)
+      }
+    },
+    status(receipt) {
+      const node = page.table().columns.find(column => column.key === 'status').render(receipt)
+      return typeof node.type === 'function' ? node.type(node.props) : node
+    },
+    review(receipt, action) {
+      const select = find(page.status(receipt), 'select')
+      if (!select || select.props.disabled) return false
+      select.props.onChange({ target: { value: action } })
+      return true
     },
     change(type, value) { find(page.render(), type).props.onChange(value); page.render() },
     unmount() { slots.forEach((slot) => slot?.cleanup?.()) },
@@ -171,19 +189,50 @@ test('photo retrieval uses a protected same-origin route and refuses missing, ex
   await assert.rejects(invalid)
 })
 
-test('review sends only the version, prevents duplicate clicks and updates only after server success', async () => {
+test('pending dropdown opens either confirmation, preserves pending on cancel and cannot edit completed or settled rows', async () => {
+  const page = mount()
+  await page.respond(0, 200, [row('a')])
+  const select = () => find(page.status(row('a')), 'select').props
+  assert.equal(select().value, '대기')
+  assert.equal(select()['aria-label'], '기사 a 승인 여부')
+  assert.deepEqual(select().children.filter(option => !option.props.disabled && !option.props.hidden)
+    .map(option => option.props.value), ['승인', '반려'])
+  assert.equal(find(page.status(row('a')), 'button'), undefined)
+  for (const action of ['승인', '승인', '반려']) {
+    page.review(row('a'), action)
+    assert.equal(page.modal().title, `${action}하시겠습니까?`)
+    assert.equal(select().value, '대기')
+    assert.equal(select().disabled, true)
+    assert.equal(page.calls.length, 1)
+    page.modal().onCancel()
+    assert.equal(select().value, '대기')
+    assert.equal(select().disabled, false)
+  }
+  for (const receipt of [{ ...row('a'), status: 'approved' }, { ...row('a'), status: 'rejected' },
+    { ...row('a'), settlementId: 'settled' }]) {
+    assert.equal(find(page.status(receipt), 'select'), undefined)
+    assert.equal(page.review(receipt, '승인'), false)
+  }
+})
+
+test('approval sends confirmed amount and decimal liters, locks edits and updates only after server success', async () => {
   const page = mount()
   await page.respond(0, 200, [row('a')])
   assert.equal(page.review(row('a'), '승인'), true)
+  assert.equal(page.field('finalAmount').value, '')
+  assert.equal(page.field('liters').value, '')
+  page.approval()
   const modal = page.modal()
   assert.equal(modal.title, '승인하시겠습니까?')
   modal.onConfirm(); modal.onConfirm()
   assert.equal(page.calls.length, 2)
   assert.equal(page.calls[1].url, '/api/v1/admin/mileage/applications/a/approve')
   assert.equal(page.calls[1].options.method, 'POST')
-  assert.deepEqual(JSON.parse(page.calls[1].options.body), { reviewVersion: 'a'.repeat(64) })
+  assert.deepEqual(JSON.parse(page.calls[1].options.body), { reviewVersion: 'a'.repeat(64), finalAmount: 1234, liters: '5.125' })
+  assert.equal(page.field('finalAmount').disabled, true)
+  assert.equal(page.field('liters').disabled, true)
   assert.equal(page.table().rows[0].status, 'pending')
-  const approved = { ...row('a'), status: 'approved', finalAmount: 1234, mileageAmount: 0 }
+  const approved = { ...row('a'), status: 'approved', finalAmount: 1234, mileageAmount: 103 }
   await page.respond(1, 200, approved)
   assert.equal(page.modal(), undefined)
   await page.respond(2, 200, [approved])
@@ -196,6 +245,7 @@ test('review failure preserves pending state and supports a reasonless retry', a
   const page = mount()
   await page.respond(0, 200, [row('a')])
   page.review(row('a'), '반려')
+  assert.equal(page.field('finalAmount'), undefined)
   page.modal().onConfirm()
   await page.respond(1, 500, {})
   assert.equal(page.table().rows[0].status, 'pending')
@@ -226,6 +276,7 @@ test('review callbacks after navigation cannot change the next screen or redirec
     const page = mount()
     await page.respond(0, 200, [row('a')])
     page.review(row('a'), '승인')
+    page.approval()
     const stale = page.modal().onConfirm
     stale()
     page.unmount()
@@ -239,9 +290,10 @@ test('review callbacks after navigation cannot change the next screen or redirec
 
 test('review rejects malformed responses and does not report success for another application', async () => {
   for (const value of [{ ...row('a'), reviewVersion: '' }, { ...row('a'), settlementId: undefined },
-    { ...row('b'), status: 'approved' }, { ...row('a'), status: 'approved' }, row('a')]) {
+    { ...row('b'), status: 'approved' }, { ...row('a'), status: 'approved' },
+    { ...row('a'), status: 'approved', finalAmount: 9999, mileageAmount: 103 }, row('a')]) {
     const page = mount()
-    const operation = page.api.reviewReceipt(row('a'), 'approve')
+    const operation = page.api.reviewReceipt(row('a'), 'approve', { finalAmount: 1234, liters: '5.125' })
     const result = assert.rejects(operation)
     await page.respond(1, 200, value)
     await result
@@ -252,6 +304,7 @@ test('review completion refreshes the latest filter without inserting an old row
   const page = mount()
   await page.respond(0, 200, [row('a')])
   page.review(row('a'), '승인')
+  page.approval('10', '1')
   page.modal().onConfirm()
   page.change('SearchFilter', '기사 b')
   await page.respond(2, 200, [row('a'), row('b')])
@@ -262,6 +315,82 @@ test('review completion refreshes the latest filter without inserting an old row
   await page.respond(4, 200, [row('a'), row('b')])
   await page.respond(5, 200, [row('b')])
   assert.deepEqual(page.table().rows, [row('b')])
+})
+
+test('approval validates both inputs before sending and retains entered values across a failed request', async () => {
+  const page = mount()
+  await page.respond(0, 200, [row('a')])
+  page.review(row('a'), '승인')
+  for (const [amount, liters] of [['', '1'], ['9007199254740992', '1'],
+    ['1', ''], ['1', '1.2345'], ['1', '100000']]) {
+    page.approval(amount, liters)
+    page.modal().onConfirm()
+    assert.equal(page.calls.length, 1)
+    assert.match(page.modal().description, /입력/)
+  }
+  page.approval('0', '0')
+  page.modal().onConfirm()
+  assert.deepEqual(JSON.parse(page.calls[1].options.body), { reviewVersion: row('a').reviewVersion, finalAmount: 0, liters: '0' })
+  await page.respond(1, 500, {})
+  assert.equal(page.field('finalAmount').value, '0')
+  assert.equal(page.field('liters').value, '0')
+  assert.equal(page.field('liters').disabled, false)
+  page.modal().onConfirm()
+  assert.deepEqual(page.calls[2].options.body, page.calls[1].options.body)
+  await page.respond(2, 200, { ...row('a'), status: 'approved', finalAmount: 0, mileageAmount: 0 })
+  assert.equal(page.modal(), undefined)
+  page.review(row('b'), '승인')
+  assert.equal(page.field('finalAmount').value, '')
+  assert.equal(page.field('liters').value, '')
+})
+
+test('approval filters nonnumeric input, groups thousands and sends exact values without commas', async () => {
+  const page = mount()
+  await page.respond(0, 200, [row('a')])
+  page.review(row('a'), '승인')
+  for (const [amount, liters, displayedAmount, displayedLiters] of [
+    ['abc12,345원!', '주유 1,234.125L', '12,345', '1,234.125'],
+    ['1.5', '1..234', '15', '1.234'],
+    ['9007199254740991', '9,999.000', '9,007,199,254,740,991', '9,999.000'],
+    ['', '0.', '', '0.'],
+    ['삭제', '삭제', '', ''],
+  ]) {
+    page.approval(amount, liters)
+    assert.equal(page.field('finalAmount').value, displayedAmount)
+    assert.equal(page.field('liters').value, displayedLiters)
+  }
+  page.approval('12,345', '1,234.125')
+  page.modal().onConfirm()
+  assert.deepEqual(JSON.parse(page.calls[1].options.body), {
+    reviewVersion: row('a').reviewVersion, finalAmount: 12345, liters: '1234.125',
+  })
+  await page.respond(1, 500, {})
+  assert.equal(page.field('finalAmount').value, '12,345')
+  assert.equal(page.field('liters').value, '1,234.125')
+  page.modal().onConfirm()
+  assert.equal(page.calls[2].options.body, page.calls[1].options.body)
+  await page.respond(2, 200, { ...row('a'), status: 'approved', finalAmount: 12345, mileageAmount: 24683 })
+  assert.equal(page.modal(), undefined)
+})
+
+test('approval keeps the cursor beside the edited digits when separators change', async () => {
+  const page = mount()
+  await page.respond(0, 200, [row('a')])
+  page.review(row('a'), '승인')
+  for (const [name, raw, cursor, formatted, expectedCursor] of [
+    ['finalAmount', '1923,456', 2, '1,923,456', 3],
+    ['finalAmount', '1,9823,456', 4, '19,823,456', 4],
+    ['finalAmount', '1234', 1, '1,234', 1],
+    ['finalAmount', '12x,345', 3, '12,345', 2],
+    ['liters', '1923.125', 2, '1,923.125', 3],
+    ['liters', '1,234.1x25', 8, '1,234.125', 7],
+    ['liters', '1,234..125', 7, '1,234.125', 6],
+    ['liters', '0.', 2, '0.', 2],
+  ]) {
+    const input = page.input(name, raw, cursor)
+    assert.equal(input.value, formatted)
+    assert.equal(input.selectionStart, expectedCursor)
+  }
 })
 
 test('cancelled confirmation cannot submit and current review authentication failure redirects', async () => {

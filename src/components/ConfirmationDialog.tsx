@@ -1,8 +1,10 @@
-import { useId } from 'react'
+import { useId, type ReactNode } from 'react'
 
 type ConfirmationDialogProps = {
   actionLabel: string
+  children?: ReactNode
   description: string
+  disabled?: boolean
   onCancel: () => void
   onConfirm: () => void
   title: string
@@ -11,7 +13,9 @@ type ConfirmationDialogProps = {
 /** 관리자 화면에서 공통으로 사용하는 확인 팝업이다. */
 export function ConfirmationDialog({
   actionLabel,
+  children,
   description,
+  disabled = false,
   onCancel,
   onConfirm,
   title,
@@ -32,9 +36,11 @@ export function ConfirmationDialog({
           <p id={titleId}>{title}</p>
           <p id={descriptionId}>{description}</p>
         </div>
+        {children}
         <div className="confirmation-dialog__actions">
           <button
             className="confirmation-dialog__action confirmation-dialog__action--confirm"
+            disabled={disabled}
             onClick={onConfirm}
             type="button"
           >
@@ -42,6 +48,7 @@ export function ConfirmationDialog({
           </button>
           <button
             className="confirmation-dialog__action confirmation-dialog__action--cancel"
+            disabled={disabled}
             onClick={onCancel}
             type="button"
           >

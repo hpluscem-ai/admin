@@ -4,12 +4,22 @@ import chevronDownIcon from '../assets/chevron-down.svg'
 import { ConfirmationDialog } from '../components/ConfirmationDialog'
 import { DataPageHeader } from '../components/DataPageHeader'
 import { DataTable, type DataTableColumn } from '../components/DataTable'
+import { TextField } from '../components/FormControls'
 import { AffiliationFilter, SearchFilter } from '../components/PageFilters'
+import { StatusSelect } from '../components/StatusSelect'
 import { AdminApiError, isInvalidAdminSession } from '../adminAuth'
 import { getReceiptPhoto, getReceipts, reviewReceipt, RECEIPTS_LOAD_ERROR, type Receipt } from '../receipts'
 
 const statusNames = { approved: '승인', pending: '대기', rejected: '반려' } as const
 const amount = (value: number | null) => value === null ? '-' : value.toLocaleString('ko-KR')
+const APPROVAL_AMOUNT_ERROR = '확정 금액은 0 이상의 정수로 입력해주세요.'
+const APPROVAL_LITERS_ERROR = '주유량은 정수 5자리, 소수점 3자리 이내의 숫자로 입력해주세요.'
+
+function formatApprovalInput(value: string, decimal = false) {
+  const [integer, ...fraction] = value.replace(decimal ? /[^\d.]/g : /\D/g, '').split('.')
+  return integer.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+    + (decimal && fraction.length ? `.${fraction.join('')}` : '')
+}
 
 function ApprovalStatusDisplay({ name, status }: Pick<Receipt, 'name' | 'status'>) {
   const label = statusNames[status]
@@ -32,7 +42,7 @@ function receiptDate(value: string | null) {
 type PhotoTarget = { path: string | null; label: string }
 type ReviewTarget = { receipt: Receipt; action: 'approve' | 'reject' }
 
-function getColumns(onPhoto: (target: PhotoTarget) => void, onReview: (target: ReviewTarget) => void): readonly DataTableColumn<Receipt>[] {
+function getColumns(onPhoto: (target: PhotoTarget) => void, onReview: (target: ReviewTarget) => void, reviewDisabled: boolean): readonly DataTableColumn<Receipt>[] {
   const photoButton = (row: Receipt, kind: 'receipt' | 'meter') => <button className="text-button" type="button"
     aria-label={`${row.name} ${kind === 'receipt' ? '영수증' : '계기판'} 사진 보기`}
     onClick={() => onPhoto({ path: row.photos[kind], label: `${row.name} ${kind === 'receipt' ? '영수증' : '계기판'} 사진` })}>보기</button>
@@ -49,10 +59,8 @@ function getColumns(onPhoto: (target: PhotoTarget) => void, onReview: (target: R
     { key: 'mileage', label: '적립 마일리지', render: (row) => amount(row.mileageAmount) },
     { key: 'receiptDate', label: '영수일시', render: (row) => receiptDate(row.receiptAt) },
     { key: 'status', label: '승인여부', render: (row) => row.status === 'pending' && row.settlementId === null
-      ? <span className="approval-status"><span>대기</span><span className="table-actions">
-        <button className="text-button" type="button" aria-label={`${row.name} 승인`} onClick={() => onReview({ receipt: row, action: 'approve' })}>승인</button>
-        <button className="text-button" type="button" aria-label={`${row.name} 반려`} onClick={() => onReview({ receipt: row, action: 'reject' })}>반려</button>
-      </span></span>
+      ? <StatusSelect label={row.name} status="대기" disabled={reviewDisabled}
+        onChange={(status) => onReview({ receipt: row, action: status === '승인' ? 'approve' : 'reject' })} />
       : <ApprovalStatusDisplay name={row.name} status={row.status} /> },
   ]
 }
@@ -67,6 +75,8 @@ export function ReceiptDataPage() {
   const [review, setReview] = useState<ReviewTarget | null>(null)
   const [reviewError, setReviewError] = useState('')
   const [reviewConflict, setReviewConflict] = useState(false)
+  const [approvalValues, setApprovalValues] = useState({ finalAmount: '', liters: '' })
+  const [reviewSubmitting, setReviewSubmitting] = useState(false)
   const [refresh, setRefresh] = useState(0)
   const lifetime = useRef<object | null>(null)
   const modalOwner = useRef<ReviewTarget | null>(null)
@@ -104,18 +114,46 @@ export function ReceiptDataPage() {
     setReview(null)
   }
 
+  function handleApprovalInput(input: HTMLInputElement, name: keyof typeof approvalValues) {
+    const decimal = name === 'liters'
+    const value = formatApprovalInput(input.value, decimal)
+    let remaining = formatApprovalInput(input.value.slice(0, input.selectionStart ?? input.value.length), decimal).replaceAll(',', '').length
+    let cursor = 0
+    while (cursor < value.length && remaining > 0) {
+      if (value[cursor] !== ',') --remaining
+      ++cursor
+    }
+    input.value = value
+    input.setSelectionRange(cursor, cursor)
+    setReviewError('')
+    setApprovalValues((values) => ({ ...values, [name]: value }))
+  }
+
   async function handleReview() {
     if (!review || modalOwner.current !== review || submitting.current || !lifetime.current) return
     if (conflictedReview.current === review) { closeReview(); return }
+    const amountInput = approvalValues.finalAmount.replaceAll(',', '')
+    const liters = approvalValues.liters.replaceAll(',', '')
+    const finalAmount = Number(amountInput)
+    if (review.action === 'approve') {
+      if (!/^\d+$/.test(amountInput) || !Number.isSafeInteger(finalAmount)) {
+        setReviewError(APPROVAL_AMOUNT_ERROR); return
+      }
+      if (!/^\d{1,5}(?:\.\d{1,3})?$/.test(liters)) {
+        setReviewError(APPROVAL_LITERS_ERROR); return
+      }
+    }
     const owner = lifetime.current
     const routePath = window.location.pathname
     const generation = queryGeneration.current
     const isCurrent = () => lifetime.current === owner && window.location.pathname === routePath
     const reload = () => { ++queryGeneration.current; setRefresh((value) => value + 1) }
     submitting.current = true
+    setReviewSubmitting(true)
     setReviewError('')
     try {
-      const updated = await reviewReceipt(review.receipt, review.action)
+      const updated = await reviewReceipt(review.receipt, review.action,
+        review.action === 'approve' ? { finalAmount, liters } : undefined)
       if (!isCurrent()) return
       if (generation === queryGeneration.current) setRows((current) => current?.map((row) => row.id === updated.id ? updated : row) ?? null)
       reload()
@@ -133,6 +171,7 @@ export function ReceiptDataPage() {
       if (conflict || modalOwner.current !== review) reload()
     } finally {
       submitting.current = false
+      if (isCurrent()) setReviewSubmitting(false)
     }
   }
 
@@ -144,8 +183,9 @@ export function ReceiptDataPage() {
       </DataPageHeader>
       <DataTable columns={getColumns(setPhoto, (target) => {
         if (submitting.current) return
+        setApprovalValues({ finalAmount: '', liters: '' })
         modalOwner.current = target; setReviewError(''); setReviewConflict(false); setReview(target)
-      })} rows={rows ?? []} getRowKey={(row) => row.id}
+      }, review !== null || reviewSubmitting)} rows={rows ?? []} getRowKey={(row) => row.id}
         emptyMessage={loadError || (rows === null || affiliations === null
           ? '영수 데이터를 불러오는 중입니다.' : '조회 조건에 맞는 영수 데이터가 없습니다.')} />
       {photo && <ReceiptPhotoDialog target={photo} onClose={() => setPhoto(null)} />}
@@ -153,7 +193,27 @@ export function ReceiptDataPage() {
         title={`${review.action === 'approve' ? '승인' : '반려'}하시겠습니까?`}
         description={reviewError || `선택한 신청을 ${review.action === 'approve' ? '승인' : '반려'}합니다.`}
         actionLabel={reviewConflict ? '확인' : review.action === 'approve' ? '승인' : '반려'}
-        onCancel={closeReview} onConfirm={handleReview} />}
+        disabled={reviewSubmitting}
+        onCancel={closeReview} onConfirm={handleReview}>
+        {review.action === 'approve' && <div className="form-fields">
+          <div className="form-control">
+            <label className="form-field-label" htmlFor="receipt-approval-final-amount">확정 금액(원)</label>
+            <TextField id="receipt-approval-final-amount" name="finalAmount" inputMode="numeric" required
+              placeholder="확정 금액을 입력해주세요"
+              disabled={reviewSubmitting || reviewConflict} value={approvalValues.finalAmount}
+              aria-invalid={reviewError === APPROVAL_AMOUNT_ERROR}
+              onChange={(event) => handleApprovalInput(event.currentTarget, 'finalAmount')} />
+          </div>
+          <div className="form-control">
+            <label className="form-field-label" htmlFor="receipt-approval-liters">주유량(L)</label>
+            <TextField id="receipt-approval-liters" name="liters" inputMode="decimal" required
+              placeholder="주유량을 입력해주세요"
+              disabled={reviewSubmitting || reviewConflict} value={approvalValues.liters}
+              aria-invalid={reviewError === APPROVAL_LITERS_ERROR}
+              onChange={(event) => handleApprovalInput(event.currentTarget, 'liters')} />
+          </div>
+        </div>}
+      </ConfirmationDialog>}
     </section>
   )
 }

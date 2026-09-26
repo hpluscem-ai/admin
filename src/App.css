@@ -287,7 +287,15 @@
   gap: 8px;
 }
 
+.approval-status--select {
+  position: relative;
+}
+
 .approval-status select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
   padding: 0;
   border: 0;
   outline: 0;
@@ -421,6 +429,10 @@
 
 .confirmation-dialog__message p {
   margin: 0;
+}
+
+.confirmation-dialog > .form-fields {
+  width: 100%;
 }
 
 .confirmation-dialog__actions {

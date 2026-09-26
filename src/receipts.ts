@@ -54,14 +54,16 @@ function parseReceipt(value: unknown): Receipt {
     .map((field) => [field, row[field]])) as Receipt
 }
 
-export async function reviewReceipt(receipt: Pick<Receipt, 'id' | 'reviewVersion'>, action: 'approve' | 'reject'): Promise<Receipt> {
+export async function reviewReceipt(receipt: Pick<Receipt, 'id' | 'reviewVersion'>, action: 'approve' | 'reject',
+  approval?: { finalAmount: number; liters: string }): Promise<Receipt> {
+  if (action === 'approve' && !approval) throw new Error('확정 금액과 주유량을 입력해주세요.')
   const data = await requestAdmin(`mileage/applications/${encodeURIComponent(receipt.id)}/${action}`, {
-    method: 'POST', body: { reviewVersion: receipt.reviewVersion },
+    method: 'POST', body: { reviewVersion: receipt.reviewVersion, ...(action === 'approve' ? approval : {}) },
   })
   const result = parseReceipt(data)
   if (result.id !== receipt.id || result.reviewVersion !== receipt.reviewVersion ||
     result.status !== (action === 'approve' ? 'approved' : 'rejected') ||
-    (action === 'approve' && (result.finalAmount === null || result.mileageAmount === null))) throw new Error('심사 결과를 확인하지 못했습니다. 다시 시도해주세요.')
+    (action === 'approve' && (result.finalAmount !== approval?.finalAmount || result.mileageAmount === null))) throw new Error('심사 결과를 확인하지 못했습니다. 다시 시도해주세요.')
   return result
 }
 
