@@ -32,7 +32,7 @@ function mount(path = '/drivers') {
     useRef(initial) { return slots[slot({ current: initial })] },
     useState(initial) {
       const key = slot(initial)
-      return [slots[key], (value) => { slots[key] = value }]
+      return [slots[key], (value) => { slots[key] = typeof value === 'function' ? value(slots[key]) : value }]
     },
     useEffect(effect, deps) {
       const key = slot(null), previous = slots[key]
@@ -88,9 +88,61 @@ test('restored sessions show the selected page and recheck expiry on navigation'
   await page.respond(0)
   assert.equal(page.render().type, 'AdminLayout')
   assert.equal(page.render().props.children.type, 'DriverDataPage')
-  assert.equal(page.navigate('/receipts'), null)
+  const pending = page.navigate('/receipts')
+  assert.equal(pending.type, 'AdminLayout')
+  assert.equal(pending.props.children, null)
+  assert.equal(page.render().props.children, null)
+  assert.equal(page.calls[1].url, '/api/v1/admin/auth/me')
   await page.respond(1, 401, { code: 'INVALID_ADMIN_SESSION' })
   assert.equal(page.render().type, 'LoginPage')
+})
+
+test('page changes retain the layout and wait for authentication before mounting each destination', async () => {
+  const page = mount('/drivers')
+  await page.respond(0)
+  const layout = page.render().type
+  const destinations = [
+    ['/dashboard', 'DashboardPage', '대시보드'],
+    ['/infrastructure', 'InfrastructureDataPage', '인프라 데이터 목록'],
+    ['/infrastructure/new', 'InfrastructureCreatePage', '인프라 데이터 목록'],
+    ['/infrastructure/edit/station-id', 'InfrastructureEditPage', '인프라 데이터 목록'],
+    ['/receipts', 'ReceiptDataPage', '영수 데이터 목록'],
+    ['/settlements', 'LogisticsSettlementPage', '물류사 정산 관리'],
+    ['/settlements/new', 'LogisticsCreatePage', '물류사 정산 관리'],
+    ['/settlements/edit/company-id', 'LogisticsEditPage', '물류사 정산 관리'],
+    ['/drivers', 'DriverDataPage', '소속 기사 데이터 목록'],
+  ]
+  for (const [path, component, menu] of destinations) {
+    for (const pending of [page.navigate(path), page.render()]) {
+      assert.equal(pending.type, layout)
+      assert.equal(pending.props.activeMenu, menu)
+      assert.equal(pending.props.children, null)
+    }
+    await page.respond(page.calls.length - 1)
+    const loaded = page.render()
+    assert.equal(loaded.type, layout)
+    assert.equal(loaded.props.children.type, component)
+  }
+})
+
+test('returning to the last authenticated route waits for its new check and ignores stale success', async () => {
+  const page = mount('/drivers')
+  await page.respond(0)
+  page.navigate('/receipts')
+  assert.equal(page.navigate('/drivers').props.children, null)
+  await page.respond(2, 401, { code: 'INVALID_ADMIN_SESSION' })
+  await page.respond(1)
+  assert.equal(page.render().type, 'LoginPage')
+  assert.equal(page.navigate('/receipts'), null)
+})
+
+test('a failed session recheck hides the layout and keeps the existing login error', async () => {
+  const page = mount('/drivers')
+  await page.respond(0)
+  assert.equal(page.navigate('/receipts').type, 'AdminLayout')
+  await page.respond(1, 500, { code: 'INTERNAL_SERVER_ERROR' })
+  assert.equal(page.render().type, 'LoginPage')
+  assert.equal(page.render().props.requestFailed, true)
 })
 
 test('retryable restoration errors use the existing login error and successful login verifies me', async () => {

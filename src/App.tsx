@@ -53,14 +53,14 @@ function App() {
 
   const activeRequest = useRef<object | null>(null)
   const [session, setSession] = useState<{
-    path: string
+    path: string | null
     status: 'signedIn' | 'signedOut' | 'error'
   } | null>(null)
 
   useEffect(() => {
     const current = {}
     activeRequest.current = current
-    setSession(null)
+    setSession((previous) => previous?.status === 'signedIn' ? { ...previous, path: null } : null)
     void getCurrentAdmin().then(() => {
       if (activeRequest.current !== current) return
       setSession({ path, status: 'signedIn' })
@@ -89,7 +89,7 @@ function App() {
     }
   }
 
-  if (!session || session.path !== path) return null
+  if (!session || (session.status !== 'signedIn' && session.path !== path)) return null
   if (session.status !== 'signedIn') {
     return <LoginPage key={`${path}:${session.status}`} authenticate={authenticate} requestFailed={session.status === 'error'} />
   }
@@ -99,7 +99,7 @@ function App() {
   if (infrastructureEditId !== undefined) {
     return (
       <AdminLayout activeMenu="인프라 데이터 목록">
-        <InfrastructureEditPage key={infrastructureEditId} id={infrastructureEditId} />
+        {session.path === path ? <InfrastructureEditPage key={infrastructureEditId} id={infrastructureEditId} /> : null}
       </AdminLayout>
     )
   }
@@ -109,7 +109,7 @@ function App() {
   if (logisticsEditId !== undefined) {
     return (
       <AdminLayout activeMenu="물류사 정산 관리">
-        <LogisticsEditPage key={logisticsEditId} id={logisticsEditId} />
+        {session.path === path ? <LogisticsEditPage key={logisticsEditId} id={logisticsEditId} /> : null}
       </AdminLayout>
     )
   }
@@ -119,7 +119,7 @@ function App() {
 
   return (
     <AdminLayout activeMenu={route.activeMenu}>
-      <Page />
+      {session.path === path ? <Page /> : null}
     </AdminLayout>
   )
 }
