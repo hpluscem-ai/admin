@@ -6,7 +6,6 @@ const menuItems = [
   { href: '/infrastructure', label: '인프라 데이터 목록' },
   { href: '/receipts', label: '영수 데이터 목록' },
   { href: '/settlements', label: '물류사 정산 관리' },
-  { href: '/erd', label: '통합 DB 구조' },
 ] as const
 
 export type AdminMenuItem = (typeof menuItems)[number]['label']

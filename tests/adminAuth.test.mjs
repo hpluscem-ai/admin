@@ -51,7 +51,7 @@ function mount(path = '/drivers') {
     './pages/InfrastructureFormPage': { InfrastructureCreatePage: 'InfrastructureCreatePage', InfrastructureEditPage: 'InfrastructureEditPage' },
     './pages/LogisticsFormPage': { LogisticsCreatePage: 'LogisticsCreatePage', LogisticsEditPage: 'LogisticsEditPage' },
   }
-  for (const name of ['DashboardPage', 'DriverDataPage', 'ErdPage', 'InfrastructureDataPage',
+  for (const name of ['DashboardPage', 'DriverDataPage', 'InfrastructureDataPage',
     'LoginPage', 'LogisticsSettlementPage', 'ReceiptDataPage']) imports[`./pages/${name}`] = { [name]: name }
   const exports = {}
   new Function('require', 'exports', 'window', appSource)((name) => {
@@ -73,7 +73,7 @@ function mount(path = '/drivers') {
 }
 
 test('direct protected routes wait for a real administrator session and reject anonymous access', async () => {
-  for (const path of ['/dashboard', '/drivers', '/infrastructure/edit/example', '/settlements/edit/example', '/erd']) {
+  for (const path of ['/dashboard', '/drivers', '/infrastructure/edit/example', '/settlements/edit/example', '/receipts']) {
     const page = mount(path)
     assert.equal(page.render(), null)
     assert.equal(page.calls[0].url, '/api/v1/admin/auth/me')
@@ -88,7 +88,7 @@ test('restored sessions show the selected page and recheck expiry on navigation'
   await page.respond(0)
   assert.equal(page.render().type, 'AdminLayout')
   assert.equal(page.render().props.children.type, 'DriverDataPage')
-  assert.equal(page.navigate('/erd'), null)
+  assert.equal(page.navigate('/receipts'), null)
   await page.respond(1, 401, { code: 'INVALID_ADMIN_SESSION' })
   assert.equal(page.render().type, 'LoginPage')
 })
@@ -131,10 +131,18 @@ test('bad credentials and failed post-login session confirmation cannot unlock r
 
 test('a stale session response cannot override a newer route check', async () => {
   const page = mount('/drivers')
-  page.navigate('/erd')
+  page.navigate('/receipts')
   await page.respond(1)
   await page.respond(0, 401, { code: 'INVALID_ADMIN_SESSION' })
-  assert.equal(page.render().props.children.type, 'ErdPage')
+  assert.equal(page.render().props.children.type, 'ReceiptDataPage')
+})
+
+test('the removed ERD route uses the existing dashboard fallback', async () => {
+  const page = mount('/erd')
+  assert.equal(page.render(), null)
+  await page.respond(0)
+  assert.equal(page.render().props.children.type, 'DashboardPage')
+  assert.equal(page.render().props.activeMenu, '대시보드')
 })
 
 test('malformed administrator data and network failure are errors rather than authenticated state', async () => {
