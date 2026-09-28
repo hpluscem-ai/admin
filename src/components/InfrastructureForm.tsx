@@ -30,6 +30,7 @@ type InfrastructureFormProps = {
 type InfrastructureField = {
   inputMode?: 'decimal' | 'numeric'
   label: string
+  maxLength?: number
   name: keyof InfrastructureValues
   placeholder: string
   required: boolean
@@ -73,6 +74,7 @@ const fields: readonly InfrastructureField[] = [
     placeholder: '위도를 입력해주세요.',
     required: true,
     inputMode: 'decimal',
+    maxLength: 8,
   },
   {
     name: 'longitude',
@@ -80,6 +82,7 @@ const fields: readonly InfrastructureField[] = [
     placeholder: '경도를 입력해주세요.',
     required: true,
     inputMode: 'decimal',
+    maxLength: 9,
   },
   {
     name: 'note',
@@ -113,6 +116,17 @@ function formatCapacity(value: string) {
 }
 
 function formatCoordinate(value: string) {
+  const scientific = value.match(/^(-?)(\d+)(?:\.(\d+))?e([+-]?\d+)$/i)
+  if (scientific) {
+    const [, sign, integer, fraction = '', exponentText] = scientific
+    const digits = `${integer}${fraction}`
+    const decimalPointIndex = integer.length + Number(exponentText)
+    value = decimalPointIndex <= 0
+      ? `${sign}0.${'0'.repeat(-decimalPointIndex)}${digits}`
+      : decimalPointIndex < digits.length
+        ? `${sign}${digits.slice(0, decimalPointIndex)}.${digits.slice(decimalPointIndex)}`
+        : `${sign}${digits}${'0'.repeat(decimalPointIndex - digits.length)}`
+  }
   const sign = value.startsWith('-') ? '-' : ''
   const numericValue = value.replace(/[^\d.]/g, '')
   const decimalPointIndex = numericValue.indexOf('.')
@@ -123,7 +137,8 @@ function formatCoordinate(value: string) {
 
   return `${sign}${numericValue.slice(0, decimalPointIndex + 1)}${numericValue
     .slice(decimalPointIndex + 1)
-    .replace(/\./g, '')}`
+    .replace(/\./g, '')
+    .slice(0, 4)}`
 }
 
 function formatFieldValue(name: keyof InfrastructureValues, value: string) {
@@ -150,7 +165,7 @@ function validateField(field: InfrastructureField, value: string) {
   if (
     value &&
     (field.name === 'latitude' || field.name === 'longitude') &&
-    !/^-?\d+(?:\.\d+)?$/.test(value)
+    !/^-?\d+(?:\.\d+)?(?:e[+-]?\d+)?$/i.test(value)
   ) {
     return `${field.label}를 숫자 형식으로 입력해주세요.`
   }
@@ -304,11 +319,14 @@ export function InfrastructureForm({
                   disabled={saving}
                   id={fieldId}
                   name={field.name}
-                  value={values[field.name]}
+                  value={field.name === 'latitude' || field.name === 'longitude'
+                    ? formatCoordinate(values[field.name])
+                    : values[field.name]}
                   placeholder={field.placeholder}
                   aria-invalid={Boolean(error)}
                   aria-describedby={error ? errorId : undefined}
                   inputMode={field.inputMode}
+                  maxLength={field.maxLength}
                   required={field.required}
                   onBlur={() => {
                     const nextError = validateField(field, values[field.name])

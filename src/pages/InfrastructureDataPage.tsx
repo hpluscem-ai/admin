@@ -22,7 +22,11 @@ function getColumns(
   return [
     { key: 'station', label: '주유소 이름', render: (row) => row.station },
     { key: 'pole', label: 'Pole', render: (row) => row.pole },
-    { key: 'model', label: '모델명', render: (row) => row.model || '-' },
+    {
+      key: 'model',
+      label: '모델명',
+      render: (row) => <span className="infrastructure-data__model">{row.model || '-'}</span>,
+    },
     { key: 'capacity', label: '용량', render: (row) => row.capacity || '-' },
     { key: 'address', label: '주소', render: (row) => row.address },
     { key: 'note', label: '비고', render: (row) => row.note || '-' },
@@ -135,7 +139,7 @@ export function InfrastructureDataPage() {
   }
 
   return (
-    <section className="data-page" aria-labelledby="infrastructure-data-title">
+    <section className="data-page infrastructure-data-page" aria-labelledby="infrastructure-data-title">
       <DataPageHeader title="인프라 데이터 목록" titleId="infrastructure-data-title">
         <DateRangeFilter {...dateRange} onChange={setDateRange} />
         <SearchFilter

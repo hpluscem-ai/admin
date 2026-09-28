@@ -15,6 +15,14 @@ export type Station = {
 }
 export const STATIONS_LOAD_ERROR = '인프라 데이터를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.'
 
+function displayCoordinate(value: number | null) {
+  if (value === null) return ''
+  const text = String(value)
+  if (text.includes('e')) return value < 0 ? '-0.0000' : '0.0000'
+  const dot = text.indexOf('.')
+  return dot === -1 ? text : text.slice(0, dot + 5)
+}
+
 function readStation(data: unknown): Station {
   if (typeof data !== 'object' || data === null) throw new Error(STATIONS_LOAD_ERROR)
   const row = data as Record<string, unknown>
@@ -43,8 +51,8 @@ export function getStationValues(station: Station): InfrastructureValues {
     station: station.businessName, pole: station.pole, address: station.roadAddress,
     model: station.devices.map(({ model }) => model).join(' / '),
     capacity: station.devices.map(({ capacityLiters }) => `${capacityLiters.toLocaleString('ko-KR')}L`).join(' / '),
-    note: station.note ?? '', latitude: station.latitude === null ? '' : String(station.latitude),
-    longitude: station.longitude === null ? '' : String(station.longitude),
+    note: station.note ?? '', latitude: displayCoordinate(station.latitude),
+    longitude: displayCoordinate(station.longitude),
   }
 }
 
@@ -68,8 +76,8 @@ export async function saveStation(values: InfrastructureValues, station?: Statio
   const invalid = { ok: false as const, message: '입력한 인프라 정보를 확인해주세요.' }
   const latitude = Number(values.latitude.trim())
   const longitude = Number(values.longitude.trim())
-  if (!/^-?\d+(?:\.\d+)?$/.test(values.latitude.trim()) ||
-    !/^-?\d+(?:\.\d+)?$/.test(values.longitude.trim()) ||
+  if (!/^-?\d+(?:\.\d+)?(?:e[+-]?\d+)?$/i.test(values.latitude.trim()) ||
+    !/^-?\d+(?:\.\d+)?(?:e[+-]?\d+)?$/i.test(values.longitude.trim()) ||
     !Number.isFinite(latitude) || Math.abs(latitude) > 90 ||
     !Number.isFinite(longitude) || Math.abs(longitude) > 180) return invalid
 

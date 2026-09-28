@@ -149,6 +149,66 @@ test('null coordinates stay blank in the form and unavailable in table, while re
   }
 })
 
+test('coordinates display four decimals without rounding and unrelated edits preserve raw precision', async () => {
+  const item = { ...singleStation(), latitude: 35.99999, longitude: -127.1234999 }
+  const list = mount()
+  await list.respond(0, 200, [item])
+  const values = list.api.getStationValues(item)
+  assert.equal(values.latitude, '35.9999')
+  assert.equal(values.longitude, '-127.1234')
+  assert.equal(list.table().rows[0].latitude, values.latitude)
+
+  const page = mount('detail')
+  await page.respond(0, 200, item)
+  const form = find(page.render(), 'InfrastructureForm').props
+  assert.equal(form.initialValues.latitude, String(item.latitude))
+  const render = page.form(form.initialValues, form.save)
+  const inputs = Object.fromEntries(all(render(), 'TextField').map(({ props }) => [props.name, props]))
+  assert.equal(inputs.latitude.value, values.latitude)
+  assert.equal(inputs.longitude.value, values.longitude)
+  assert.equal(inputs.latitude.maxLength, 8)
+  assert.equal(inputs.longitude.maxLength, 9)
+  changeInput(render, 'station', '수정한 주유소')
+  const saving = render().props.onSubmit({ preventDefault() {} })
+  const body = JSON.parse(page.calls[1].options.body)
+  assert.equal(body.latitude, item.latitude)
+  assert.equal(body.longitude, item.longitude)
+  await page.respond(1, 200, item)
+  await saving
+
+  const edited = mount('detail')
+  await edited.respond(0, 200, item)
+  const editedForm = find(edited.render(), 'InfrastructureForm').props
+  const editedRender = edited.form(editedForm.initialValues, editedForm.save)
+  changeInput(editedRender, 'latitude', '35.9999')
+  changeInput(editedRender, 'longitude', '-127.123456')
+  assert.equal(all(editedRender(), 'TextField').find(({ props }) => props.name === 'longitude').props.value, '-127.1234')
+  assert.equal(find(editedRender(), 'PrimaryButton').props.disabled, false)
+  const updating = editedRender().props.onSubmit({ preventDefault() {} })
+  assert.equal(JSON.parse(edited.calls[1].options.body).latitude, 35.9999)
+  assert.equal(JSON.parse(edited.calls[1].options.body).longitude, -127.1234)
+  await edited.respond(1, 200, item)
+  await updating
+})
+
+test('tiny coordinates display as zero without changing their stored values', async () => {
+  const item = { ...singleStation(), latitude: 1e-7, longitude: -1e-7 }
+  const page = mount('detail')
+  await page.respond(0, 200, item)
+  const form = find(page.render(), 'InfrastructureForm').props
+  const render = page.form(form.initialValues, form.save)
+  const inputs = Object.fromEntries(all(render(), 'TextField').map(({ props }) => [props.name, props.value]))
+  assert.equal(inputs.latitude, '0.0000')
+  assert.equal(inputs.longitude, '-0.0000')
+  changeInput(render, 'station', '수정한 주유소')
+  const saving = render().props.onSubmit({ preventDefault() {} })
+  const body = JSON.parse(page.calls[1].options.body)
+  assert.equal(body.latitude, item.latitude)
+  assert.equal(body.longitude, item.longitude)
+  await page.respond(1, 200, item)
+  await saving
+})
+
 test('stationQuery and inclusive calendar dates use the actual query contract including DST boundaries', () => {
   const page = mount()
   page.change('DateRangeFilter', { start: '2026-03-08', end: '2026-03-08' })

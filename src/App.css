@@ -263,6 +263,18 @@
   text-align: center;
 }
 
+.infrastructure-data-page .data-table th:nth-child(3),
+.infrastructure-data-page .data-table td:nth-child(3) {
+  max-width: 240px;
+}
+
+.infrastructure-data__model {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .text-button {
   padding: 0;
   border: 0;

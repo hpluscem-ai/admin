@@ -92,7 +92,11 @@ export function InfrastructureEditPage({
       actionLabel="인프라 데이터 수정"
       error={loadError}
       onRetry={() => setRefresh(current => current + 1)}
-      initialValues={station ? getStationValues(station) : undefined}
+      initialValues={station ? {
+        ...getStationValues(station),
+        latitude: station.latitude === null ? '' : String(station.latitude),
+        longitude: station.longitude === null ? '' : String(station.longitude),
+      } : undefined}
       save={save ?? ((values) => saveStation(values, station ?? undefined))}
       title="인프라 데이터 수정"
       titleId="infrastructure-edit-title"
