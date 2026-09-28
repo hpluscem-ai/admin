@@ -10,11 +10,16 @@ import { DataPageHeader } from '../components/DataPageHeader'
 import { DataTable, type DataTableColumn } from '../components/DataTable'
 import { SearchFilter } from '../components/PageFilters'
 
-function toMonthValue(date = new Date()) {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
+function toPreviousKstMonthValue(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+  }).formatToParts(date)
+  const year = Number(parts.find((part) => part.type === 'year')?.value)
+  const month = Number(parts.find((part) => part.type === 'month')?.value)
 
-  return `${year}-${month}`
+  return `${month === 1 ? year - 1 : year}-${String(month === 1 ? 12 : month - 1).padStart(2, '0')}`
 }
 
 function formatMonth(value: string) {
@@ -95,7 +100,7 @@ export function LogisticsSettlementPage() {
   const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'failed'>('loading')
   const [fileError, setFileError] = useState('')
   const [businessNameQuery, setBusinessNameQuery] = useState('')
-  const [selectedMonth, setSelectedMonth] = useState(toMonthValue)
+  const [selectedMonth, setSelectedMonth] = useState(toPreviousKstMonthValue)
   const [deactivationTarget, setDeactivationTarget] = useState<LogisticsCompany | null>(null)
   const [deactivationError, setDeactivationError] = useState('')
   const [fileBusy, setFileBusy] = useState(false)

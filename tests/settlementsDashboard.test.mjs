@@ -38,10 +38,40 @@ function mount(page='LogisticsSettlementPage') {
 const table=h=>nodes(h.render(),'DataTable')[0].props
 const upload=(h,file=new File(['example'],'paid.xls'))=>{const input=nodes(h.render(),'input').find(n=>n.props.type==='file');const target={files:[file],value:'paid.xls'};input.props.onChange({currentTarget:target});assert.equal(target.value,'')}
 
+test('settlement opens on the prior KST calendar month, including January rollover',()=>{
+ const NativeDate=Date
+ for(const [now,month] of [
+  ['2025-12-31T15:00:00.000Z','2025-12'],
+  ['2026-09-30T14:59:59.999Z','2026-08'],
+  ['2026-09-30T15:00:00.000Z','2026-09'],
+  ['2026-03-31T12:00:00.000Z','2026-02'],
+ ]){
+  class FrozenDate extends NativeDate {
+   constructor(value){super(value ?? now)}
+   static now(){return new NativeDate(now).valueOf()}
+  }
+  globalThis.Date=FrozenDate
+  try {
+   const h=mount()
+   assert.equal(nodes(h.render(),'MonthFilter')[0].props.value,month)
+   assert.match(h.calls[0].url,new RegExp(`month=${month}`))
+  } finally {
+   globalThis.Date=NativeDate
+  }
+ }
+})
+
 test('settlement month requests are server filtered and late replies cannot replace a newer month',async()=>{
- const h=mount();let month=nodes(h.render(),'MonthFilter')[0];month.props.onChange('2026-08');h.render();
- assert.match(h.calls[1].url,/month=2026-08/);await h.respond(1,200,[company]);await h.respond(0,200,[{...company,mileage:99}]);
+ const h=mount();let month=nodes(h.render(),'MonthFilter')[0];month.props.onChange('2030-12');h.render();
+ assert.match(h.calls[1].url,/month=2030-12/);await h.respond(1,200,[company]);await h.respond(0,200,[{...company,mileage:99}]);
  assert.equal(table(h).rows[0].mileage,3000);assert.equal(h.calls[1].options.credentials,'include')
+})
+test('selected settlement month is kept for list, import and export requests',async()=>{
+ const h=mount();nodes(h.render(),'MonthFilter')[0].props.onChange('2030-12');h.render()
+ assert.match(h.calls[1].url,/settlements\?month=2030-12/);await h.respond(1,200,[company])
+ upload(h);assert.match(h.calls[2].url,/settlements\/import\?month=2030-12/);await h.respond(2,200,{completed:1,alreadyCompleted:0});h.render()
+ await h.respond(3,200,[company]);nodes(h.render(),'button').find(n=>n.props.className==='floating-action').props.onClick()
+ assert.match(h.calls[4].url,/settlements\/export\?month=2030-12/)
 })
 test('upload waits for server success, suppresses repeat clicks, then refreshes server rows',async()=>{
  const h=mount();await h.respond(0,200,[company]);upload(h);upload(h);assert.equal(h.calls.length,2)
