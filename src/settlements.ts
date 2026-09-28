@@ -49,13 +49,15 @@ export async function uploadSettlements(month: string, file: File): Promise<void
     (result.completed as number) < 0 || (result.alreadyCompleted as number) < 0) throw new Error('Invalid settlement result')
 }
 
-export function settlementError(error: unknown): string {
+export function settlementError(error: unknown, action: 'export' | 'import' = 'import'): string {
   if (error instanceof AdminApiError) {
-    if (error.code === 'SETTLEMENT_MONTH_NOT_CLOSED') return '선택한 월의 마감 후 대량이체 파일을 내려받을 수 있습니다.'
     if (error.code === 'SETTLEMENT_EXPORT_EMPTY') return '선택한 월에 다운로드할 미완료 정산 내역이 없습니다.'
     if (error.code === 'SETTLEMENT_ROW_MISMATCH') return '정산 월·은행·계좌·금액·CMS코드를 확인해주세요. 파일은 반영되지 않았습니다.'
     if (error.code === 'SETTLEMENT_DUPLICATE_ROW') return '중복된 정산 행을 제거해주세요. 파일은 반영되지 않았습니다.'
-    if (error.status === 400 || error.status === 413) return '정산 조건 또는 엑셀 양식과 내용을 확인해주세요. 파일은 반영되지 않았습니다.'
+    if (error.status === 400 || error.status === 413) return action === 'export'
+      ? '정산 조건과 등록된 계좌 정보를 확인해주세요.'
+      : '정산 조건 또는 엑셀 양식과 내용을 확인해주세요. 파일은 반영되지 않았습니다.'
   }
-  return '정산 처리 결과를 확인하지 못했습니다. 같은 파일로 다시 시도해주세요.'
+  return action === 'export' ? '대량이체 파일을 내려받지 못했습니다. 다시 시도해주세요.'
+    : '정산 처리 결과를 확인하지 못했습니다. 같은 파일로 다시 시도해주세요.'
 }

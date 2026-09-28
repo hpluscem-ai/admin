@@ -1,6 +1,6 @@
 import { navigate } from '../navigation'
 import { useEffect, useRef, useState } from 'react'
-import { ConfirmationDialog } from '../components/ConfirmationDialog'
+import { ConfirmationDialog, NoticeDialog } from '../components/ConfirmationDialog'
 import { DataPageHeader } from '../components/DataPageHeader'
 import { DataTable, type DataTableColumn } from '../components/DataTable'
 import { DateRangeFilter, SearchFilter } from '../components/PageFilters'
@@ -58,6 +58,7 @@ function getColumns(
 export function InfrastructureDataPage() {
   const [stations, setStations] = useState<Station[] | null>(null)
   const [loadError, setLoadError] = useState('')
+  const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'failed'>('loading')
   const [deleteError, setDeleteError] = useState('')
   const [dateRange, setDateRange] = useState(getDefaultDateRange)
   const [stationQuery, setStationQuery] = useState('')
@@ -74,14 +75,16 @@ export function InfrastructureDataPage() {
   useEffect(() => {
     let active = true
     const generation = ++queryGeneration.current
-    setStations(null)
+    setLoadState('loading')
     setLoadError('')
     void getStations(dateRange, stationQuery).then((loaded) => {
-      if (active && queryGeneration.current === generation) setStations(loaded)
+      if (!active || queryGeneration.current !== generation) return
+      setStations(loaded)
+      setLoadState('loaded')
     }).catch((error: unknown) => {
       if (!active || queryGeneration.current !== generation) return
       if (isInvalidAdminSession(error)) navigate('/login')
-      else setLoadError(STATIONS_LOAD_ERROR)
+      else { setLoadError(STATIONS_LOAD_ERROR); setLoadState('failed') }
     })
     return () => { active = false }
   }, [dateRange, stationQuery, refresh])
@@ -144,10 +147,12 @@ export function InfrastructureDataPage() {
       </DataPageHeader>
       <DataTable
         columns={getColumns((row) => { modalOwner.current = {}; setDeleteError(''); setDeleteTarget(row) })}
-        emptyMessage={loadError || (stations === null ? '인프라 데이터를 불러오는 중입니다.' : '조회 조건에 맞는 인프라 데이터가 없습니다.')}
+        emptyMessage={loadState === 'failed' ? undefined : loadState === 'loading' ? '인프라 데이터를 불러오는 중입니다.' : '조회 조건에 맞는 인프라 데이터가 없습니다.'}
         rows={rows}
         getRowKey={(row) => row.id}
       />
+      {!deleteTarget && loadError && <NoticeDialog message={loadError}
+        onClose={() => setLoadError('')} onRetry={() => setRefresh(current => current + 1)} />}
       <a className="floating-action" href="/infrastructure/new">
         <img src={packageIcon} alt="" />
         인프라 데이터 추가

@@ -64,6 +64,8 @@ function mount(kind = 'list', id = 'a') {
     imports[`../components/${name}`] = { [name]: name }
   }
   imports['../components/PageFilters'] = { SearchFilter: 'SearchFilter' }
+  imports['../components/ConfirmationDialog'].NoticeDialog = 'NoticeDialog'
+  imports['./ConfirmationDialog'] = imports['../components/ConfirmationDialog']
   if (kind === 'form') props = { initialValues: { ...company('a'), bank: 'KB국민은행' },
     save: (values) => api.saveLogisticsCompany(values, id ?? undefined), actionLabel: '저장' }
   const component = kind === 'form' ? load('components/LogisticsForm.tsx').LogisticsForm : kind === 'list' ? load('pages/LogisticsSettlementPage.tsx').LogisticsSettlementPage
@@ -117,16 +119,19 @@ test('empty success, server failure, network failure and malformed data stay dis
   for (const data of [{}, [company('a', '')], [{ ...company('a'), bankCode: 'unknown' }]]) {
     const page = mount()
     await page.respond(0, 200, data)
-    assert.equal(find(page.render(), 'DataTable').props.emptyMessage, page.api.LOGISTICS_LOAD_ERROR)
+    assert.equal(find(page.render(), 'NoticeDialog').props.message, page.api.LOGISTICS_LOAD_ERROR)
+    assert.equal(find(page.render(), 'DataTable').props.emptyMessage, undefined)
   }
   const failed = mount()
   await failed.respond(0, 500, { code: 'INTERNAL_SERVER_ERROR' })
-  assert.equal(find(failed.render(), 'DataTable').props.emptyMessage, failed.api.LOGISTICS_LOAD_ERROR)
+  assert.equal(find(failed.render(), 'NoticeDialog').props.message, failed.api.LOGISTICS_LOAD_ERROR)
+    assert.equal(find(failed.render(), 'DataTable').props.emptyMessage, undefined)
   assert.equal(failed.window.location.pathname, '/settlements')
   const offline = mount()
   offline.calls[0].reject(new TypeError('offline'))
   await tick()
-  assert.equal(find(offline.render(), 'DataTable').props.emptyMessage, offline.api.LOGISTICS_LOAD_ERROR)
+  assert.equal(find(offline.render(), 'NoticeDialog').props.message, offline.api.LOGISTICS_LOAD_ERROR)
+    assert.equal(find(offline.render(), 'DataTable').props.emptyMessage, undefined)
 })
 
 test('only a current invalid-session response redirects to login', async () => {
@@ -158,10 +163,10 @@ test('detail failures never expose an empty editable form and a new visit can re
   const page = mount('detail')
   await page.respond(0, 404, { code: 'LOGISTICS_COMPANY_NOT_FOUND' })
   assert.equal(find(page.render(), 'LogisticsForm'), undefined)
-  assert.equal(find(page.render(), 'p').props.children, '물류사를 찾을 수 없습니다.')
+  assert.equal(find(page.render(), 'NoticeDialog').props.message, '물류사를 찾을 수 없습니다.')
   page.changeId('b')
   await page.respond(1, 500, { code: 'INTERNAL_SERVER_ERROR' })
-  assert.equal(find(page.render(), 'p').props.children, page.api.LOGISTICS_LOAD_ERROR)
+  assert.equal(find(page.render(), 'NoticeDialog').props.message, page.api.LOGISTICS_LOAD_ERROR)
   page.changeId('c')
   await page.respond(2, 200, company('c'))
   assert.equal(find(page.render(), 'LogisticsForm').props.initialValues.id, 'c')
@@ -208,7 +213,7 @@ test('create and update submit exactly nine DTO fields and navigate only after v
   }
 })
 
-test('save errors remain in the existing form error and allow retry', async () => {
+test('save errors open a popup and allow retry without replacing form inputs', async () => {
   for (const [status, code, message] of [
     [400, 'VALIDATION_ERROR', '입력한 물류사 정보를 확인해주세요.'],
     [409, 'LOGISTICS_COMPANY_DUPLICATE', '이미 등록된 사업자 정보입니다.'],
@@ -219,7 +224,7 @@ test('save errors remain in the existing form error and allow retry', async () =
     const pending = submit(page)
     await page.respond(0, status, { code })
     await pending
-    assert.equal(find(page.render(), 'p').props.children, message)
+    assert.equal(find(page.render(), 'NoticeDialog').props.message, message)
     assert.equal(page.window.location.pathname, '/settlements')
     const retry = submit(page)
     assert.equal(page.calls.length, 2)
@@ -237,7 +242,7 @@ test('network and malformed success cannot claim that the company was saved', as
     else await page.respond(0, failure === 'wrong-status' ? 201 : 200, failure === 'malformed' ? {} : company('a'))
     await pending
     assert.equal(page.window.location.pathname, '/settlements')
-    assert.match(find(page.render(), 'p').props.children, /저장 중 오류/)
+    assert.match(find(page.render(), 'NoticeDialog').props.message, /저장 중 오류/)
   }
 })
 
@@ -267,6 +272,7 @@ test('existing field validation prevents invalid input from reaching the write A
   await submit(page)
   assert.equal(page.calls.length, 0)
   assert.equal(find(page.render(), 'p').props.children, '사업자명을 입력해주세요.')
+  assert.equal(find(page.render(), 'NoticeDialog'), undefined)
 })
 
 

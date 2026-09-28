@@ -64,6 +64,8 @@ function mount(kind = 'list', id = 'a') {
   imports['../components/PageFilters'] = { SearchFilter: 'SearchFilter', DateRangeFilter: 'DateRangeFilter' }
   for (const name of ['ConfirmationDialog', 'DataPageHeader', 'DataTable', 'InfrastructureForm']) imports[`../components/${name}`] = { [name]: name }
   imports['./FormControls'] = { PrimaryButton: 'PrimaryButton', TextField: 'TextField' }
+  imports['../components/ConfirmationDialog'].NoticeDialog = 'NoticeDialog'
+  imports['./ConfirmationDialog'] = imports['../components/ConfirmationDialog']
   const component = kind === 'list' ? load('pages/InfrastructureDataPage.tsx').InfrastructureDataPage
     : load('pages/InfrastructureFormPage.tsx').InfrastructureEditPage
   const page = {
@@ -165,16 +167,17 @@ test('empty list, malformed response and load failure are distinct; missing deta
   for (const data of [{}, [{ ...station(), latitude: 91 }], [{ ...station(), devices: [{ id: 'a', model: 'a', capacityLiters: 0, active: true }] }]]) {
     const page = mount()
     await page.respond(0, 200, data)
-    assert.equal(page.table().emptyMessage, page.api.STATIONS_LOAD_ERROR)
+    assert.equal(find(page.render(), 'NoticeDialog').props.message, page.api.STATIONS_LOAD_ERROR)
+    assert.equal(page.table().emptyMessage, undefined)
   }
   const detail = mount('detail')
   await detail.respond(0, 404, { code: 'STATION_NOT_FOUND' })
   assert.equal(find(detail.render(), 'InfrastructureForm'), undefined)
-  assert.equal(find(detail.render(), 'p').props.children, '주유소를 찾을 수 없습니다.')
+  assert.equal(find(detail.render(), 'NoticeDialog').props.message, '주유소를 찾을 수 없습니다.')
   const failed = mount()
   failed.calls[0].reject(new TypeError('offline'))
   await tick()
-  assert.equal(failed.table().emptyMessage, failed.api.STATIONS_LOAD_ERROR)
+  assert.equal(find(failed.render(), 'NoticeDialog').props.message, failed.api.STATIONS_LOAD_ERROR)
   failed.change('SearchFilter', 'retry')
   await failed.respond(1, 200, [])
   assert.equal(failed.table().emptyMessage, '조회 조건에 맞는 인프라 데이터가 없습니다.')
@@ -204,7 +207,7 @@ test('a form without a save callback does not fabricate success', async () => {
   await page.respond(0, 200, [station()])
   const render = page.form(page.api.getStationValues(station('positive', [35.5, 127.25])))
   await render().props.onSubmit({ preventDefault() {} })
-  assert.match(find(render(), 'p').props.children, /저장 서버 연동이 필요/)
+  assert.match(find(render(), 'NoticeDialog').props.message, /저장 서버 연동이 필요/)
   assert.equal(page.calls.length, 1)
 })
 
@@ -407,7 +410,7 @@ test('form blocks duplicate submits and input loss with the existing shared subm
   await page.respond(1, 500, { code: 'INTERNAL_SERVER_ERROR' })
   await pending
   assert.equal(page.window.location.pathname, '/infrastructure')
-  assert.match(find(render(), 'p').props.children, /저장 중 오류/)
+  assert.match(find(render(), 'NoticeDialog').props.message, /저장 중 오류/)
   assert.ok(all(render(), 'TextField').every(({ props }) => !props.disabled))
   const retry = render().props.onSubmit({ preventDefault() {} })
   await page.respond(2, 200, item)
@@ -428,4 +431,14 @@ test('late save responses cannot redirect another page; only current expired ses
       assert.equal(page.window.location.pathname, departed ? '/drivers' : status === 200 ? '/infrastructure' : '/login')
     }
   }
+})
+
+test('failed station refresh and dismiss keep previous rows; the next successful query can replace them', async () => {
+ const page=mount();await page.respond(0,200,[station('a')]);const before=page.table().rows
+ page.change('SearchFilter','new');assert.deepEqual(page.table().rows,before)
+ await page.respond(1,500,{});assert.deepEqual(page.table().rows,before)
+ const notice=find(page.render(),'NoticeDialog').props;notice.onClose()
+ assert.equal(find(page.render(),'NoticeDialog'),undefined);assert.deepEqual(page.table().rows,before)
+ page.change('SearchFilter','next');await page.respond(2,200,[])
+ assert.deepEqual(page.table().rows,[]);assert.match(page.table().emptyMessage,/없습니다/)
 })

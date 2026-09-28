@@ -1036,6 +1036,12 @@
   font-style: normal;
 }
 
+.notice-dialog {
+  max-height: calc(100dvh - 40px);
+  margin: auto;
+  border: 0;
+}
+
 /* Receipt photo viewer approved at a maximum width of 800px. */
 .receipt-photo-dialog {
   width: calc(100% - 40px);
@@ -1045,11 +1051,13 @@
   border: 0;
 }
 
-.receipt-photo-dialog:not([open]) {
+.receipt-photo-dialog:not([open]),
+.notice-dialog:not([open]) {
   display: none;
 }
 
-.receipt-photo-dialog::backdrop {
+.receipt-photo-dialog::backdrop,
+.notice-dialog::backdrop {
   background: rgba(0, 0, 0, 0.4);
 }
 

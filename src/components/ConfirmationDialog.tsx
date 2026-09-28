@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from 'react'
+import { useEffect, useId, useRef, type ReactNode } from 'react'
 
 type ConfirmationDialogProps = {
   actionLabel: string
@@ -58,4 +58,32 @@ export function ConfirmationDialog({
       </div>
     </div>
   )
+}
+
+export function NoticeDialog({ message, onClose, onRetry }: {
+  message: string
+  onClose: () => void
+  onRetry?: () => void
+}) {
+  const dialog = useRef<HTMLDialogElement>(null)
+  const messageId = useId()
+  useEffect(() => {
+    const element = dialog.current
+    const opener = document.activeElement
+    element?.showModal()
+    return () => {
+      element?.close()
+      if (opener instanceof HTMLElement && opener.isConnected) opener.focus()
+    }
+  }, [])
+  return <dialog ref={dialog} aria-label="안내" aria-describedby={messageId}
+    className="confirmation-dialog notice-dialog" onCancel={onClose}>
+    <div className="confirmation-dialog__message"><p id={messageId}>{message}</p></div>
+    <div className="confirmation-dialog__actions">
+      <button className="confirmation-dialog__action confirmation-dialog__action--confirm"
+        type="button" onClick={onRetry ?? onClose}>{onRetry ? '다시 시도' : '확인'}</button>
+      {onRetry && <button className="confirmation-dialog__action confirmation-dialog__action--cancel"
+        type="button" onClick={onClose}>닫기</button>}
+    </div>
+  </dialog>
 }

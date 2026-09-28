@@ -60,6 +60,8 @@ function mount() {
   imports['../components/PageFilters'] = { AffiliationFilter: 'AffiliationFilter', SearchFilter: 'SearchFilter' }
   imports['../components/FormControls'] = { TextField: 'TextField' }
   for (const name of ['DataPageHeader', 'DataTable', 'ConfirmationDialog']) imports[`../components/${name}`] = { [name]: name }
+  imports['../components/ConfirmationDialog'].NoticeDialog = 'NoticeDialog'
+  imports['./ConfirmationDialog'] = imports['../components/ConfirmationDialog']
   const { ReceiptDataPage } = load('pages/ReceiptDataPage.tsx')
   const page = {
     calls, window, api: imports['../receipts'],
@@ -153,7 +155,8 @@ test('empty, failed and malformed results are distinct and changing the query re
     [200, [{ ...row('a'), photos: { receipt: 'https://external.test/private.jpg', meter: null } }]]]) {
     const page = mount()
     await page.respond(0, status, value)
-    assert.match(page.table().emptyMessage, /불러오지 못했습니다/)
+    assert.match(find(page.render(), 'NoticeDialog').props.message, /불러오지 못했습니다/)
+    assert.equal(page.table().emptyMessage, undefined)
     assert.deepEqual(page.table().rows, [])
     page.change('SearchFilter', 'retry')
     await page.respond(1, 200, [row('a')])
@@ -500,4 +503,14 @@ test('rejection sends trimmed text and refuses a successful response with a diff
   await page.respond(1, 200, { ...row('a'), status: 'rejected', rejectionReason: null })
   await rejected
   page.unmount()
+})
+
+test('failed receipt refresh preserves rows and affiliation filters until a successful retry', async () => {
+ const page=mount();await page.respond(0,200,[row('a')]);const before=page.table().rows
+ page.change('SearchFilter','new');assert.deepEqual(page.table().rows,before)
+ await page.respond(1,500,{});await page.respond(2,200,[row('new')])
+ assert.deepEqual(page.table().rows,before);assert.equal(page.table().emptyMessage,undefined)
+ find(page.render(),'NoticeDialog').props.onRetry();page.render()
+ await page.respond(3,200,[row('new')]);await page.respond(4,200,[row('new')])
+ assert.deepEqual(page.table().rows,[row('new')]);assert.equal(find(page.render(),'NoticeDialog'),undefined)
 })

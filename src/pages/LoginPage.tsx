@@ -2,6 +2,7 @@ import { navigate } from '../navigation'
 import { useRef, useState, type FormEvent } from 'react'
 import logo from '../assets/hayan100-logo.png'
 import { Footer } from '../components/Footer'
+import { NoticeDialog } from '../components/ConfirmationDialog'
 import { PrimaryButton, TextField } from '../components/FormControls'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -168,11 +169,7 @@ export function LoginPage({ authenticate, requestFailed = false }: LoginPageProp
             <PrimaryButton type="submit" disabled={!canSubmit}>
               {isSubmitting ? '로그인 중...' : '로그인'}
             </PrimaryButton>
-            {submitError ? (
-              <p className="login-form__error" role="alert">
-                {submitError}
-              </p>
-            ) : null}
+            {submitError && <NoticeDialog message={submitError} onClose={() => setSubmitError('')} />}
           </form>
         </div>
       </main>

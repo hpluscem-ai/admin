@@ -30,6 +30,7 @@ function mount(page='LogisticsSettlementPage') {
  imports['../dashboard']=load('dashboard.ts')
  for(const name of ['DataTable','DataPageHeader','ConfirmationDialog']) imports['../components/'+name]={[name]:name}
  imports['../components/PageFilters']={SearchFilter:'SearchFilter',DateRangeFilter:'DateRangeFilter',AffiliationFilter:'AffiliationFilter'}
+ imports['../components/ConfirmationDialog'].NoticeDialog='NoticeDialog'
  const Component=load('pages/'+page+'.tsx')[page]
  const harness={calls,downloads,window,api:imports['../settlements'],dashboard:imports['../dashboard'],render(){index=0;const tree=Component();effects.splice(0).forEach(fn=>fn());return tree},unmount(){slots.forEach(s=>s?.cleanup?.())},async respond(i,status,body,headers){calls[i].resolve(body instanceof Blob?new Response(body,{status,headers}):Response.json(body,{status}));await tick()}}
  harness.render();return harness
@@ -48,10 +49,11 @@ test('upload waits for server success, suppresses repeat clicks, then refreshes 
  assert.equal(table(h).rows[0].transferStatus,'pending');await h.respond(1,200,{completed:1,alreadyCompleted:0});h.render()
  assert.equal(h.calls.length,3);await h.respond(2,200,[{...company,transferStatus:'completed'}]);assert.equal(table(h).rows[0].transferStatus,'completed')
 })
-test('failed and malformed upload responses use the existing error cell and allow the identical file again',async()=>{
+test('failed and malformed uploads keep rows and show a dismissible popup before retry',async()=>{
  for(const [status,result]of [[400,{code:'SETTLEMENT_ROW_MISMATCH'}],[500,{}],[200,{completed:-1,alreadyCompleted:0}]]){
  const h=mount();await h.respond(0,200,[company]);upload(h);await h.respond(1,status,result)
- assert.equal(table(h).rows.length,0);assert.match(table(h).emptyMessage,/확인|결과/)
+ assert.deepEqual(table(h).rows,[{...company,bank:'KB국민은행'}]);assert.match(nodes(h.render(),'NoticeDialog')[0].props.message,/확인|결과/)
+ nodes(h.render(),'NoticeDialog')[0].props.onClose();assert.equal(nodes(h.render(),'NoticeDialog').length,0);assert.equal(table(h).rows.length,1)
  upload(h);assert.equal(h.calls.length,3);await h.respond(2,200,{completed:0,alreadyCompleted:1});h.render();assert.equal(h.calls.length,4)
  }
 })
@@ -62,12 +64,12 @@ test('late file responses after leaving do not redirect, download or refresh ano
 test('current file session expiry redirects and invalid XLS response never downloads a fake file',async()=>{
  const h=mount();await h.respond(0,200,[company]);upload(h);await h.respond(1,401,{code:'INVALID_ADMIN_SESSION'});assert.equal(h.window.location.pathname,'/login')
  const b=mount();await b.respond(0,200,[company]);nodes(b.render(),'button').find(n=>n.props.className==='floating-action').props.onClick();await b.respond(1,200,{}, {'Content-Type':'application/json'})
- assert.equal(b.downloads.length,0);assert.equal(table(b).rows.length,0)
+ assert.equal(b.downloads.length,0);assert.equal(table(b).rows.length,1);assert.match(nodes(b.render(),'NoticeDialog')[0].props.message,/내려받지 못/)
 })
 test('successful empty data differs from malformed/failed settlement responses',async()=>{
  const good=mount();await good.respond(0,200,[]);assert.match(table(good).emptyMessage,/없습니다/)
  for(const result of [[{...company,mileage:null}],[{...company,mileage:9007199254740992}],[{...company,transferStatus:'sent'}]]){
- const h=mount();await h.respond(0,200,result);assert.match(table(h).emptyMessage,/불러오지 못/)
+ const h=mount();await h.respond(0,200,result);assert.match(nodes(h.render(),'NoticeDialog')[0].props.message,/불러오지 못/);assert.equal(table(h).emptyMessage,undefined)
  }
 })
 test('inactive historical settlement row preserves account and amount but has no live edit/delete operation',async()=>{
@@ -88,5 +90,68 @@ test('dashboard ignores stale date/affiliation responses, including late expired
 test('dashboard zeroes require a valid success and failure leaves chart lines unavailable',async()=>{
  const h=mount('DashboardPage');await h.respond(0,200,{...data,accumulatedMileage:0,settlementMileage:0,matchedCount:0,mismatchedCount:0,chart:[]})
  assert.equal(nodes(h.render(),'SummaryCard')[0].props.value,'0');assert.equal(nodes(h.render(),'MileageChart')[0].props.loaded,true)
- const bad=mount('DashboardPage');await bad.respond(0,200,{...data,accumulatedMileage:null});assert.equal(nodes(bad.render(),'SummaryCard')[0].props.value,'-');assert.equal(nodes(bad.render(),'MileageChart')[0].props.loaded,false);assert.match(nodes(bad.render(),'RecentReceiptCard')[0].props.message,/불러오지 못/)
+ const bad=mount('DashboardPage');await bad.respond(0,200,{...data,accumulatedMileage:null});assert.equal(nodes(bad.render(),'SummaryCard')[0].props.value,'-');assert.equal(nodes(bad.render(),'MileageChart')[0].props.loaded,false);assert.match(nodes(bad.render(),'NoticeDialog')[0].props.message,/불러오지 못/);assert.equal(nodes(bad.render(),'RecentReceiptCard')[0].props.message,'')
+})
+
+test('download failures keep the exact loaded rows and do not suppress an outstanding list request', async () => {
+ for (const code of ['SETTLEMENT_EXPORT_EMPTY', 'SETTLEMENT_ACCOUNT_INVALID', 'INTERNAL_SERVER_ERROR']) {
+  const h=mount();await h.respond(0,200,[company]);const before=table(h).rows
+  nodes(h.render(),'button').find(n=>n.props.className==='floating-action').props.onClick()
+  await h.respond(1,code==='INTERNAL_SERVER_ERROR'?500:400,{code})
+  assert.deepEqual(table(h).rows,before);assert.equal(h.downloads.length,0)
+  const notice=nodes(h.render(),'NoticeDialog')[0].props
+  assert.ok(notice.message);assert.doesNotMatch(notice.message,/같은 파일|반영되지/)
+  notice.onClose();assert.deepEqual(table(h).rows,before)
+ }
+ const h=mount();nodes(h.render(),'button').find(n=>n.props.className==='floating-action').props.onClick()
+ await h.respond(1,400,{code:'SETTLEMENT_EXPORT_EMPTY'});await h.respond(0,200,[company])
+ assert.equal(table(h).rows.length,1);assert.equal(nodes(h.render(),'NoticeDialog').length,1)
+})
+
+test('failed settlement refresh preserves the previous month rows and retry only replaces them on success', async () => {
+ const h=mount();await h.respond(0,200,[company]);const before=table(h).rows
+ nodes(h.render(),'MonthFilter')[0].props.onChange('2026-07');h.render()
+ assert.deepEqual(table(h).rows,before);await h.respond(1,500,{})
+ assert.deepEqual(table(h).rows,before);assert.equal(table(h).emptyMessage,undefined)
+ nodes(h.render(),'NoticeDialog')[0].props.onRetry();h.render()
+ assert.deepEqual(table(h).rows,before);await h.respond(2,200,[{...company,mileage:2000}])
+ assert.equal(table(h).rows[0].mileage,2000);assert.equal(nodes(h.render(),'NoticeDialog').length,0)
+})
+
+test('closing an initial load error leaves neither a fake empty result nor an endless loading message', async () => {
+ const h=mount();await h.respond(0,500,{})
+ nodes(h.render(),'NoticeDialog')[0].props.onClose()
+ assert.equal(nodes(h.render(),'NoticeDialog').length,0);assert.equal(table(h).emptyMessage,undefined)
+})
+
+test('dashboard refresh failure preserves totals, recent rows and the dates of the displayed chart', async () => {
+ const h=mount('DashboardPage');await h.respond(0,200,data)
+ const chart=nodes(h.render(),'MileageChart')[0].props
+ nodes(h.render(),'DateRangeFilter')[0].props.onChange({start:'2026-07-01',end:'2026-07-31'});h.render()
+ await h.respond(1,500,{})
+ assert.equal(nodes(h.render(),'SummaryCard')[0].props.value,'3,000')
+ assert.deepEqual(nodes(h.render(),'MileageChart')[0].props.dateRange,chart.dateRange)
+ assert.deepEqual(nodes(h.render(),'MileageChart')[0].props.points,chart.points)
+ nodes(h.render(),'NoticeDialog')[0].props.onRetry();h.render();await h.respond(2,200,{...data,accumulatedMileage:123})
+ assert.equal(nodes(h.render(),'SummaryCard')[0].props.value,'123')
+})
+
+test('dismissing a file error keeps a simultaneous list failure available for retry', async () => {
+ const h=mount();nodes(h.render(),'button').find(n=>n.props.className==='floating-action').props.onClick()
+ await h.respond(0,500,{});await h.respond(1,400,{code:'SETTLEMENT_EXPORT_EMPTY'})
+ nodes(h.render(),'NoticeDialog')[0].props.onClose()
+ const notice=nodes(h.render(),'NoticeDialog')[0].props
+ assert.match(notice.message,/불러오지 못/);assert.equal(typeof notice.onRetry,'function')
+ notice.onRetry();h.render();await h.respond(2,200,[company]);assert.equal(table(h).rows.length,1)
+})
+
+test('failed affiliation refresh keeps the displayed chart tied to its successful query', async () => {
+ const h=mount('DashboardPage');await h.respond(0,200,data)
+ nodes(h.render(),'MileageChart')[0].props.onAffiliationChange('a');h.render();await h.respond(1,200,data)
+ nodes(h.render(),'MileageChart')[0].props.onAffiliationChange('b');h.render();await h.respond(2,500,{})
+ const chart=nodes(h.render(),'MileageChart')[0].props
+ assert.equal(chart.selectedAffiliation,'b');assert.equal(chart.chartAffiliation,'a')
+ assert.deepEqual(chart.points,data.chart)
+ nodes(h.render(),'NoticeDialog')[0].props.onRetry();h.render();await h.respond(3,200,data)
+ assert.equal(nodes(h.render(),'MileageChart')[0].props.chartAffiliation,'b')
 })

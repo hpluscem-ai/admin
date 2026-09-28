@@ -1,6 +1,6 @@
 import { navigate } from '../navigation'
 import { useEffect, useRef, useState } from 'react'
-import { ConfirmationDialog } from '../components/ConfirmationDialog'
+import { ConfirmationDialog, NoticeDialog } from '../components/ConfirmationDialog'
 import { DataPageHeader } from '../components/DataPageHeader'
 import { DataTable, type DataTableColumn } from '../components/DataTable'
 import {
@@ -49,6 +49,7 @@ export function DriverDataPage() {
   const [drivers, setDrivers] = useState<Driver[] | null>(null)
   const [affiliations, setAffiliations] = useState<{ value: string; label: string }[] | null>(null)
   const [loadError, setLoadError] = useState('')
+  const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'failed'>('loading')
   const [affiliationError, setAffiliationError] = useState('')
   const [withdrawalError, setWithdrawalError] = useState('')
   const [dateRange, setDateRange] = useState(getDefaultDateRange)
@@ -56,6 +57,7 @@ export function DriverDataPage() {
   const [selectedAffiliation, setSelectedAffiliation] = useState('')
   const [withdrawalTarget, setWithdrawalTarget] = useState<Driver | null>(null)
   const [refresh, setRefresh] = useState(0)
+  const [affiliationRefresh, setAffiliationRefresh] = useState(0)
   const lifetime = useRef<object | null>(null)
   const modalOwner = useRef<object | null>(null)
   const submitting = useRef(false)
@@ -66,6 +68,7 @@ export function DriverDataPage() {
   }, [])
   useEffect(() => {
     let active = true
+    setAffiliationError('')
     void getDrivers().then((allDrivers) => {
       if (!active) return
       setAffiliations(Array.from(new Map(allDrivers.map((driver) => [driver.logisticsCompanyId,
@@ -76,18 +79,20 @@ export function DriverDataPage() {
       else setAffiliationError(DRIVERS_LOAD_ERROR)
     })
     return () => { active = false }
-  }, [])
+  }, [affiliationRefresh])
   useEffect(() => {
     let active = true
     const generation = ++queryGeneration.current
-    setDrivers(null)
+    setLoadState('loading')
     setLoadError('')
     void getDrivers({ dateRange, nameQuery, logisticsCompanyId: selectedAffiliation }).then((loaded) => {
-      if (active && queryGeneration.current === generation) setDrivers(loaded)
+      if (!active || queryGeneration.current !== generation) return
+      setDrivers(loaded)
+      setLoadState('loaded')
     }).catch((error: unknown) => {
       if (!active || queryGeneration.current !== generation) return
       if (isInvalidAdminSession(error)) navigate('/login')
-      else setLoadError(DRIVERS_LOAD_ERROR)
+      else { setLoadError(DRIVERS_LOAD_ERROR); setLoadState('failed') }
     })
     return () => { active = false }
   }, [dateRange, nameQuery, selectedAffiliation, refresh])
@@ -147,11 +152,16 @@ export function DriverDataPage() {
       </DataPageHeader>
       <DataTable
         columns={getColumns((driver) => { modalOwner.current = {}; setWithdrawalError(''); setWithdrawalTarget(driver) })}
-        emptyMessage={loadError || affiliationError || (drivers === null || affiliations === null
-          ? '기사 데이터를 불러오는 중입니다.' : '조회 조건에 맞는 기사 데이터가 없습니다.')}
-        rows={affiliations && !affiliationError ? drivers ?? [] : []}
+        emptyMessage={loadState === 'failed' ? undefined : loadState === 'loading' ? '기사 데이터를 불러오는 중입니다.' : '조회 조건에 맞는 기사 데이터가 없습니다.'}
+        rows={drivers ?? []}
         getRowKey={(row) => row.id}
       />
+      {!withdrawalTarget && (loadError || affiliationError) && <NoticeDialog message={loadError || affiliationError}
+        onClose={() => { setLoadError(''); setAffiliationError('') }}
+        onRetry={() => {
+          if (loadError) setRefresh(current => current + 1)
+          if (affiliationError) setAffiliationRefresh(current => current + 1)
+        }} />}
       {withdrawalTarget ? (
         <ConfirmationDialog
           actionLabel="탈퇴"

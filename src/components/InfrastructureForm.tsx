@@ -2,6 +2,7 @@ import { navigate } from '../navigation'
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 
 import { isInvalidAdminSession } from '../adminAuth'
+import { NoticeDialog } from './ConfirmationDialog'
 
 import { PrimaryButton, TextField } from './FormControls'
 
@@ -332,11 +333,7 @@ export function InfrastructureForm({
       <PrimaryButton type="submit" disabled={!canSubmit || saving}>
         {actionLabel}
       </PrimaryButton>
-      {submitError ? (
-        <p className="form-submit-error" role="alert">
-          {submitError}
-        </p>
-      ) : null}
+      {submitError && <NoticeDialog message={submitError} onClose={() => setSubmitError('')} />}
     </form>
   )
 }

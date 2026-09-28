@@ -1,6 +1,7 @@
 import { navigate } from '../navigation'
 import { useEffect, useState } from 'react'
 import { DataPageHeader } from '../components/DataPageHeader'
+import { NoticeDialog } from '../components/ConfirmationDialog'
 import {
   AffiliationFilter,
   DateRangeFilter,
@@ -89,7 +90,7 @@ function RecentReceiptCard({ receipts, message }: RecentReceiptCardProps) {
         <a className="recent-card__link" href="/receipts">전체 내역 보기 →</a>
       </div>
       {recentReceipts.length === 0 ? (
-        <p className="recent-card__empty">{message || '선택한 기간의 영수 내역이 없습니다.'}</p>
+        message !== '' && <p className="recent-card__empty">{message ?? '선택한 기간의 영수 내역이 없습니다.'}</p>
       ) : recentReceipts.map((receipt) => (
         <div className="recent-card__row" key={receipt.id}>
           <div>
@@ -178,10 +179,11 @@ type MileageChartProps = {
   points: DashboardData['chart']
   loaded: boolean
   selectedAffiliation: string
+  chartAffiliation: string
   onAffiliationChange: (value: string) => void
 }
 
-function MileageChart({ affiliations, dateRange, points, loaded, selectedAffiliation, onAffiliationChange }: MileageChartProps) {
+function MileageChart({ affiliations, dateRange, points, loaded, selectedAffiliation, chartAffiliation, onAffiliationChange }: MileageChartProps) {
   const chart = getChartData(points, dateRange, loaded)
   const commonSeries = getChartSeries(chart.commonValues, chart.yMaximum)
   const affiliationSeries = getChartSeries(chart.affiliationValues, chart.yMaximum)
@@ -197,9 +199,9 @@ function MileageChart({ affiliations, dateRange, points, loaded, selectedAffilia
             <p className="dashboard-chart__legend" data-series="common">
               <span aria-hidden="true" />공통 신규 적립 마일리지
             </p>
-            {selectedAffiliation ? (
+            {chartAffiliation ? (
               <p className="dashboard-chart__legend" data-series="affiliation">
-                <span aria-hidden="true" />{affiliations.find(option => option.value === selectedAffiliation)?.label}
+                <span aria-hidden="true" />{affiliations.find(option => option.value === chartAffiliation)?.label}
               </p>
             ) : null}
           </div>
@@ -246,7 +248,7 @@ function MileageChart({ affiliations, dateRange, points, loaded, selectedAffilia
                     r="4"
                   />
                 ) : null}
-                {selectedAffiliation ? (
+                {chartAffiliation ? (
                   <>
                     <path className="dashboard-chart__series dashboard-chart__series--affiliation" d={affiliationSeries.path} />
                     {affiliationSeries.singlePoint ? (
@@ -284,22 +286,28 @@ export function DashboardPage() {
   const [dashboardView, setDashboardView] = useState<DashboardData | null>(null)
   const [affiliations, setAffiliations] = useState<DashboardData['affiliations']>([])
   const [loadError, setLoadError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [refresh, setRefresh] = useState(0)
+  const [chartQuery, setChartQuery] = useState({ dateRange, affiliation: selectedAffiliation })
   useEffect(() => {
     let current = true
     const routePath = window.location.pathname
-    setDashboardView(null)
+    setLoading(true)
     setLoadError('')
     void getDashboard(dateRange, selectedAffiliation).then(data => {
       if (!current || window.location.pathname !== routePath) return
       setDashboardView(data)
       setAffiliations(data.affiliations)
+      setChartQuery({ dateRange, affiliation: selectedAffiliation })
+      setLoading(false)
     }).catch((error: unknown) => {
       if (!current || window.location.pathname !== routePath) return
       if (isInvalidAdminSession(error)) { navigate('/login'); return }
       setLoadError('데이터를 불러오지 못했습니다. 조회 기간을 다시 선택해주세요.')
+      setLoading(false)
     })
     return () => { current = false }
-  }, [dateRange, selectedAffiliation])
+  }, [dateRange, selectedAffiliation, refresh])
   const value = (key: 'accumulatedMileage' | 'settlementMileage' | 'matchedCount' | 'mismatchedCount') =>
     dashboardView ? numberFormatter.format(dashboardView[key]) : '-'
 
@@ -333,16 +341,19 @@ export function DashboardPage() {
             value={value('mismatchedCount')}
           />
         </div>
-        <RecentReceiptCard receipts={dashboardView?.receipts ?? []} message={loadError || (dashboardView === null ? '데이터를 불러오는 중입니다.' : '')} />
+        <RecentReceiptCard receipts={dashboardView?.receipts ?? []} message={dashboardView ? undefined : loading ? '데이터를 불러오는 중입니다.' : ''} />
       </div>
       <MileageChart
         affiliations={affiliations}
-        dateRange={dateRange}
+        dateRange={chartQuery.dateRange}
         points={dashboardView?.chart ?? []}
         loaded={dashboardView !== null}
         selectedAffiliation={selectedAffiliation}
+        chartAffiliation={chartQuery.affiliation}
         onAffiliationChange={setSelectedAffiliation}
       />
+      {loadError && <NoticeDialog message={loadError}
+        onClose={() => setLoadError('')} onRetry={() => setRefresh(current => current + 1)} />}
     </section>
   )
 }

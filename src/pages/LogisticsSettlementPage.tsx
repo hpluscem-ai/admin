@@ -5,7 +5,7 @@ import { deactivateLogisticsCompany, LOGISTICS_LOAD_ERROR, type LogisticsCompany
 import { getSettlements, downloadSettlements, uploadSettlements, settlementError, type SettlementCompany } from '../settlements'
 import calendarIcon from '../assets/calendar.svg'
 import packageIcon from '../assets/package.svg'
-import { ConfirmationDialog } from '../components/ConfirmationDialog'
+import { ConfirmationDialog, NoticeDialog } from '../components/ConfirmationDialog'
 import { DataPageHeader } from '../components/DataPageHeader'
 import { DataTable, type DataTableColumn } from '../components/DataTable'
 import { SearchFilter } from '../components/PageFilters'
@@ -92,6 +92,8 @@ function getColumns(
 export function LogisticsSettlementPage() {
   const [companies, setCompanies] = useState<SettlementCompany[] | null>(null)
   const [loadError, setLoadError] = useState('')
+  const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'failed'>('loading')
+  const [fileError, setFileError] = useState('')
   const [businessNameQuery, setBusinessNameQuery] = useState('')
   const [selectedMonth, setSelectedMonth] = useState(toMonthValue)
   const [deactivationTarget, setDeactivationTarget] = useState<LogisticsCompany | null>(null)
@@ -110,10 +112,13 @@ export function LogisticsSettlementPage() {
   useEffect(() => {
     const current = {}
     loadOwner.current = current
-    setCompanies(null)
+    setLoadState('loading')
     setLoadError('')
+    setFileError('')
     void getSettlements(selectedMonth).then((loaded) => {
-      if (loadOwner.current === current) setCompanies(loaded)
+      if (loadOwner.current !== current) return
+      setCompanies(loaded)
+      setLoadState('loaded')
     }).catch((error: unknown) => {
       if (loadOwner.current !== current) return
       if (isInvalidAdminSession(error)) {
@@ -121,6 +126,7 @@ export function LogisticsSettlementPage() {
         return
       }
       setLoadError(LOGISTICS_LOAD_ERROR)
+      setLoadState('failed')
     })
     return () => { loadOwner.current = null }
   }, [refresh, selectedMonth])
@@ -135,7 +141,7 @@ export function LogisticsSettlementPage() {
     const isCurrent = () => lifetime.current === owner && window.location.pathname === routePath
     fileSubmitting.current = true
     setFileBusy(true)
-    setLoadError('')
+    setFileError('')
     try {
       if (file) await uploadSettlements(selectedMonth, file)
       else {
@@ -152,9 +158,7 @@ export function LogisticsSettlementPage() {
     } catch (error) {
       if (!isCurrent()) return
       if (isInvalidAdminSession(error)) { navigate('/login'); return }
-      loadOwner.current = null
-      setCompanies(null)
-      setLoadError(settlementError(error))
+      setFileError(settlementError(error, file ? 'import' : 'export'))
     } finally {
       fileSubmitting.current = false
       if (isCurrent()) setFileBusy(false)
@@ -213,10 +217,16 @@ export function LogisticsSettlementPage() {
       </DataPageHeader>
       <DataTable
         columns={getColumns((company) => { modalOwner.current = {}; setDeactivationError(''); setDeactivationTarget(company) })}
-        emptyMessage={loadError || (companies === null ? '물류사 데이터를 불러오는 중입니다.' : '물류사 데이터가 없습니다.')}
+        emptyMessage={loadState === 'failed' ? undefined : loadState === 'loading' ? '물류사 데이터를 불러오는 중입니다.' : '물류사 데이터가 없습니다.'}
         getRowKey={(row) => row.id}
         rows={filteredCompanies}
       />
+
+      {!deactivationTarget && (fileError || loadError) && <NoticeDialog
+        message={fileError || loadError}
+        onClose={() => { if (fileError) setFileError(''); else setLoadError('') }}
+        onRetry={fileError ? undefined : () => setRefresh(current => current + 1)}
+      />}
 
       <div className="settlement-floating-actions">
         <label className="floating-action">

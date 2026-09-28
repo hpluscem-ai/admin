@@ -1,6 +1,7 @@
 import { navigate } from '../navigation'
 import { useEffect, useState } from 'react'
 import { AdminApiError, isInvalidAdminSession } from '../adminAuth'
+import { NoticeDialog } from '../components/ConfirmationDialog'
 import { getStation, getStationValues, saveStation, STATIONS_LOAD_ERROR, type Station } from '../stations'
 import {
   InfrastructureForm,
@@ -14,6 +15,7 @@ type SaveInfrastructureData = (
 
 type InfrastructureFormPageProps = {
   error?: string
+  onRetry?: () => void
   actionLabel: string
   initialValues?: InfrastructureValues
   save?: SaveInfrastructureData
@@ -24,6 +26,7 @@ type InfrastructureFormPageProps = {
 function InfrastructureFormPage({
   actionLabel,
   error,
+  onRetry,
   initialValues,
   save,
   title,
@@ -32,7 +35,7 @@ function InfrastructureFormPage({
   return (
     <section className="form-page" aria-labelledby={titleId}>
       <h1 className="data-view__title" id={titleId}>{title}</h1>
-      {error ? <p className="form-submit-error" role="alert">{error}</p> : <InfrastructureForm
+      {error ? <NoticeDialog message={error} onClose={() => navigate('/infrastructure')} onRetry={onRetry} /> : <InfrastructureForm
         actionLabel={actionLabel}
         initialValues={initialValues}
         save={save}
@@ -67,6 +70,7 @@ export function InfrastructureEditPage({
 }: InfrastructureEditPageProps) {
   const [station, setStation] = useState<Station | null>(null)
   const [loadError, setLoadError] = useState('')
+  const [refresh, setRefresh] = useState(0)
   useEffect(() => {
     let active = true
     setStation(null)
@@ -81,12 +85,13 @@ export function InfrastructureEditPage({
         ? '주유소를 찾을 수 없습니다.' : STATIONS_LOAD_ERROR)
     })
     return () => { active = false }
-  }, [id])
+  }, [id, refresh])
   if (!station && !loadError) return null
   return (
     <InfrastructureFormPage
       actionLabel="인프라 데이터 수정"
       error={loadError}
+      onRetry={() => setRefresh(current => current + 1)}
       initialValues={station ? getStationValues(station) : undefined}
       save={save ?? ((values) => saveStation(values, station ?? undefined))}
       title="인프라 데이터 수정"

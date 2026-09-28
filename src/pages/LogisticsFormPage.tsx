@@ -1,6 +1,7 @@
 import { navigate } from '../navigation'
 import { useEffect, useState } from 'react'
 import { AdminApiError, isInvalidAdminSession } from '../adminAuth'
+import { NoticeDialog } from '../components/ConfirmationDialog'
 import { getLogisticsCompany, saveLogisticsCompany, LOGISTICS_LOAD_ERROR, type LogisticsCompany } from '../logisticsCompanies'
 import {
   LogisticsForm,
@@ -14,6 +15,7 @@ type SaveLogisticsData = (
 
 type LogisticsFormPageProps = {
   error?: string
+  onRetry?: () => void
   actionLabel: string
   initialValues?: LogisticsFormValues
   save?: SaveLogisticsData
@@ -24,6 +26,7 @@ type LogisticsFormPageProps = {
 function LogisticsFormPage({
   actionLabel,
   error,
+  onRetry,
   initialValues,
   save,
   title,
@@ -32,7 +35,7 @@ function LogisticsFormPage({
   return (
     <section className="form-page" aria-labelledby={titleId}>
       <h1 className="data-view__title" id={titleId}>{title}</h1>
-      {error ? <p className="form-submit-error" role="alert">{error}</p> :
+      {error ? <NoticeDialog message={error} onClose={() => navigate('/settlements')} onRetry={onRetry} /> :
         <LogisticsForm actionLabel={actionLabel} initialValues={initialValues} save={save} />}
     </section>
   )
@@ -61,6 +64,7 @@ type LogisticsEditPageProps = {
 export function LogisticsEditPage({ id, save }: LogisticsEditPageProps) {
   const [company, setCompany] = useState<LogisticsCompany | null>(null)
   const [loadError, setLoadError] = useState('')
+  const [refresh, setRefresh] = useState(0)
   useEffect(() => {
     let active = true
     setCompany(null)
@@ -81,12 +85,13 @@ export function LogisticsEditPage({ id, save }: LogisticsEditPageProps) {
         ? '물류사를 찾을 수 없습니다.' : LOGISTICS_LOAD_ERROR)
     })
     return () => { active = false }
-  }, [id])
+  }, [id, refresh])
   if (!company && !loadError) return null
   return (
     <LogisticsFormPage
       actionLabel="물류사 데이터 수정"
       error={loadError}
+      onRetry={() => setRefresh(current => current + 1)}
       initialValues={company ?? undefined}
       save={save ?? ((values) => saveLogisticsCompany(values, id))}
       title="물류사 데이터 수정"

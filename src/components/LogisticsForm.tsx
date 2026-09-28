@@ -2,6 +2,7 @@ import { navigate } from '../navigation'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 
 import { isInvalidAdminSession } from '../adminAuth'
+import { NoticeDialog } from './ConfirmationDialog'
 
 import chevronDownIcon from '../assets/chevron-down.svg'
 import {
@@ -422,11 +423,7 @@ export function LogisticsForm({ actionLabel, initialValues, save }: LogisticsFor
       <PrimaryButton disabled={!canSubmit || saving} type="submit">
         {actionLabel}
       </PrimaryButton>
-      {submitError ? (
-        <p className="form-submit-error" role="alert">
-          {submitError}
-        </p>
-      ) : null}
+      {submitError && <NoticeDialog message={submitError} onClose={() => setSubmitError('')} />}
     </form>
   )
 }

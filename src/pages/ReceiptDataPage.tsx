@@ -1,7 +1,7 @@
 import { navigate } from '../navigation'
 import { useEffect, useRef, useState } from 'react'
 import chevronDownIcon from '../assets/chevron-down.svg'
-import { ConfirmationDialog } from '../components/ConfirmationDialog'
+import { ConfirmationDialog, NoticeDialog } from '../components/ConfirmationDialog'
 import { DataPageHeader } from '../components/DataPageHeader'
 import { DataTable, type DataTableColumn } from '../components/DataTable'
 import { TextField } from '../components/FormControls'
@@ -78,6 +78,7 @@ export function ReceiptDataPage() {
   const [rows, setRows] = useState<Receipt[] | null>(null)
   const [affiliations, setAffiliations] = useState<{ value: string; label: string }[] | null>(null)
   const [loadError, setLoadError] = useState('')
+  const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'failed'>('loading')
   const [photo, setPhoto] = useState<PhotoTarget | null>(null)
   const [review, setReview] = useState<ReviewTarget | null>(null)
   const [reviewError, setReviewError] = useState('')
@@ -107,7 +108,7 @@ export function ReceiptDataPage() {
   useEffect(() => {
     let active = true
     const generation = ++queryGeneration.current
-    setRows(null)
+    setLoadState('loading')
     setLoadError('')
     const all = getReceipts()
     const filtered = query.trim() || affiliation
@@ -117,10 +118,11 @@ export function ReceiptDataPage() {
       setAffiliations([...new Map(allRows.map((row) => [row.logisticsCompanyId,
         { value: row.logisticsCompanyId, label: row.logisticsCompanyName }])).values()])
       setRows(matchingRows)
+      setLoadState('loaded')
     }).catch((error: unknown) => {
       if (!active || generation !== queryGeneration.current) return
       if (isInvalidAdminSession(error)) navigate('/login')
-      else setLoadError(RECEIPTS_LOAD_ERROR)
+      else { setLoadError(RECEIPTS_LOAD_ERROR); setLoadState('failed') }
     })
     return () => { active = false }
   }, [query, affiliation, refresh])
@@ -205,8 +207,9 @@ export function ReceiptDataPage() {
         setRejectionReason('')
         modalOwner.current = target; setReviewError(''); setReviewConflict(false); setReview(target)
       }, review !== null || reviewSubmitting)} rows={rows ?? []} getRowKey={(row) => row.id}
-        emptyMessage={loadError || (rows === null || affiliations === null
-          ? '영수 데이터를 불러오는 중입니다.' : '조회 조건에 맞는 영수 데이터가 없습니다.')} />
+        emptyMessage={loadState === 'failed' ? undefined : loadState === 'loading' ? '영수 데이터를 불러오는 중입니다.' : '조회 조건에 맞는 영수 데이터가 없습니다.'} />
+      {!review && !photo && loadError && <NoticeDialog message={loadError}
+        onClose={() => setLoadError('')} onRetry={() => setRefresh(current => current + 1)} />}
       {photo && <ReceiptPhotoDialog target={photo} onClose={() => setPhoto(null)} />}
       {review && <ConfirmationDialog
         title={`${review.action === 'approve' ? '승인' : '반려'}하시겠습니까?`}

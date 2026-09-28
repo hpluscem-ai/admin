@@ -59,6 +59,8 @@ function mount() {
   const filters = load('components/PageFilters.tsx')
   imports['../components/PageFilters'] = { AffiliationFilter: 'AffiliationFilter', SearchFilter: 'SearchFilter', DateRangeFilter: 'DateRangeFilter' }
   for (const name of ['ConfirmationDialog', 'DataPageHeader', 'DataTable']) imports[`../components/${name}`] = { [name]: name }
+  imports['../components/ConfirmationDialog'].NoticeDialog = 'NoticeDialog'
+  imports['./ConfirmationDialog'] = imports['../components/ConfirmationDialog']
   const { DriverDataPage } = load('pages/DriverDataPage.tsx')
   const page = {
     calls, window, filters,
@@ -129,15 +131,16 @@ test('empty success differs from API, malformed and affiliation-discovery failur
     const page = mount()
     await page.respond(1 - failedRequest, 200, [driver('a')])
     await page.respond(failedRequest, status, data)
-    assert.match(page.table().emptyMessage, /불러오지 못했습니다/)
-    assert.deepEqual(page.table().rows, [])
+    assert.match(find(page.render(), 'NoticeDialog').props.message, /불러오지 못했습니다/)
+    assert.doesNotMatch(page.table().emptyMessage ?? '', /불러오지 못했습니다/)
+    assert.deepEqual(page.table().rows, failedRequest === 0 ? [driver('a')] : [])
     assert.equal(page.window.location.pathname, '/drivers')
   }
   const offline = mount()
   await offline.respond(0, 200, [])
   offline.calls[1].reject(new TypeError('offline'))
   await tick()
-  assert.match(offline.table().emptyMessage, /불러오지 못했습니다/)
+  assert.match(find(offline.render(), 'NoticeDialog').props.message, /불러오지 못했습니다/)
   offline.change('SearchFilter', 'retry')
   await offline.respond(2, 200, [])
   assert.equal(offline.table().emptyMessage, '조회 조건에 맞는 기사 데이터가 없습니다.')
@@ -292,4 +295,23 @@ test('calendar ranges retain 23-hour and 25-hour DST days regardless of the host
   ])
   assert.deepEqual(ranges.map(({ createdFrom, createdBefore }) =>
     (Date.parse(createdBefore) - Date.parse(createdFrom)) / 3_600_000), [23, 25])
+})
+
+test('driver query failures keep visible rows while the popup retries the failed request', async () => {
+ const page=await loadedPage();const before=page.table().rows
+ page.change('SearchFilter','new');assert.deepEqual(page.table().rows,before)
+ await page.respond(2,500,{})
+ assert.deepEqual(page.table().rows,before);assert.equal(page.table().emptyMessage,undefined)
+ find(page.render(),'NoticeDialog').props.onRetry();page.render()
+ assert.deepEqual(page.table().rows,before);await page.respond(3,200,[driver('new')])
+ assert.deepEqual(page.table().rows,[driver('new')]);assert.equal(find(page.render(),'NoticeDialog'),undefined)
+})
+
+test('affiliation discovery failure keeps successful driver rows and retries discovery independently', async () => {
+ const page=mount();await page.respond(1,200,[driver('a')]);await page.respond(0,500,{})
+ assert.deepEqual(page.table().rows,[driver('a')])
+ find(page.render(),'NoticeDialog').props.onRetry();page.render()
+ assert.equal(page.calls[2].url,'/api/v1/admin/drivers')
+ await page.respond(2,200,[driver('a')]);assert.equal(page.calls.length,3)
+ assert.equal(find(page.render(),'AffiliationFilter').props.options.length,1)
 })
