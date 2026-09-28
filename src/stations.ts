@@ -4,6 +4,7 @@ import { getDateRangeParams, type DateRange } from './utils/dateRange'
 
 export type Station = {
   id: string
+  version?: string
   businessName: string
   pole: string
   roadAddress: string
@@ -28,6 +29,7 @@ function readStation(data: unknown): Station {
   const row = data as Record<string, unknown>
   const fields = ['id', 'businessName', 'pole', 'roadAddress', 'createdAt'] as const
   if (fields.some((field) => typeof row[field] !== 'string' || !row[field].trim()) ||
+    (row.version !== undefined && (typeof row.version !== 'string' || !row.version.trim())) ||
     !Number.isFinite(Date.parse(row.createdAt as string)) ||
     !(row.note === null || typeof row.note === 'string') || !Array.isArray(row.devices)) {
     throw new Error(STATIONS_LOAD_ERROR)
@@ -68,8 +70,37 @@ export async function getStation(id: string): Promise<Station> {
   return readStation(await requestAdmin(`stations/${encodeURIComponent(id)}`))
 }
 
-export async function deleteStation(id: string): Promise<void> {
-  await requestAdmin(`stations/${encodeURIComponent(id)}`, { method: 'DELETE', status: 204 })
+export async function deleteStation(id: string, expectedVersion?: string): Promise<void> {
+  const version = expectedVersion ? `?expectedVersion=${encodeURIComponent(expectedVersion)}` : ''
+  await requestAdmin(`stations/${encodeURIComponent(id)}${version}`, { method: 'DELETE', status: 204 })
+}
+
+export async function deleteInfrastructureRow(stationId: string, deviceId: string | null, stationDelete: boolean) {
+  const station = await getStation(stationId)
+  const deviceExists = deviceId
+    ? station.devices.some(({ id }) => id === deviceId)
+    : station.devices.length === 0
+  if (!deviceExists || (stationDelete ? station.devices.length > 1 : station.devices.length < 2)) {
+    return { kind: 'changed' as const }
+  }
+  if (!station.version) throw new Error(STATIONS_LOAD_ERROR)
+  if (stationDelete) {
+    await deleteStation(stationId, station.version)
+    return { kind: 'station' as const }
+  }
+  const saved = readStation(await requestAdmin(`stations/${encodeURIComponent(stationId)}`, {
+    method: 'PUT',
+    body: {
+      pole: station.pole, businessName: station.businessName, roadAddress: station.roadAddress,
+      latitude: station.latitude, longitude: station.longitude,
+      ...(station.note !== null ? { note: station.note } : {}),
+      devices: station.devices.filter(({ id }) => id !== deviceId)
+        .map(({ id, model, capacityLiters }) => ({ id, model, capacityLiters })),
+      expectedVersion: station.version,
+    },
+  }))
+  if (saved.id !== stationId) throw new Error(STATIONS_LOAD_ERROR)
+  return { kind: 'device' as const, station: saved }
 }
 
 export async function saveStation(values: InfrastructureValues, station?: Station): Promise<InfrastructureSaveResult> {
@@ -100,7 +131,8 @@ export async function saveStation(values: InfrastructureValues, station?: Statio
     const saved = readStation(await requestAdmin(station ? `stations/${encodeURIComponent(station.id)}` : 'stations', {
       method: station ? 'PUT' : 'POST', status: station ? 200 : 201,
       body: { businessName: values.station.trim(), pole: values.pole.trim(), roadAddress: values.address.trim(),
-        latitude, longitude, ...(values.note.trim() ? { note: values.note.trim() } : {}), devices },
+      latitude, longitude, ...(values.note.trim() ? { note: values.note.trim() } : {}), devices,
+      ...(station?.version ? { expectedVersion: station.version } : {}) },
     }))
     if (station && saved.id !== station.id) throw new Error(STATIONS_LOAD_ERROR)
     return { ok: true }
@@ -110,6 +142,9 @@ export async function saveStation(values: InfrastructureValues, station?: Statio
       if (error.status === 400) return invalid
       if (error.status === 409 && ['UNKNOWN_DEVICE', 'DUPLICATE_DEVICE_ID'].includes(error.code)) {
         return { ok: false, message: '기기 정보가 변경되었습니다. 화면을 새로 열어 다시 시도해주세요.' }
+      }
+      if (error.status === 409 && error.code === 'STATION_VERSION_CONFLICT') {
+        return { ok: false, message: '주유소 또는 기기 정보가 변경되었습니다. 화면을 새로 열어 다시 시도해주세요.' }
       }
     }
     throw error

@@ -5,7 +5,7 @@ import { DataPageHeader } from '../components/DataPageHeader'
 import { DataTable, type DataTableColumn } from '../components/DataTable'
 import { DateRangeFilter, SearchFilter } from '../components/PageFilters'
 import { AdminApiError, isInvalidAdminSession } from '../adminAuth'
-import { getStations, getStationValues, deleteStation, STATIONS_LOAD_ERROR, type Station } from '../stations'
+import { getStations, getStationValues, deleteInfrastructureRow, STATIONS_LOAD_ERROR, type Station } from '../stations'
 import { getDefaultDateRange } from '../utils/dateRange'
 import packageIcon from '../assets/package.svg'
 
@@ -14,7 +14,9 @@ function formatDate(value: string) {
   return `${date.getFullYear()}. ${String(date.getMonth() + 1).padStart(2, '0')}. ${String(date.getDate()).padStart(2, '0')}`
 }
 
-type InfrastructureData = ReturnType<typeof getStationValues> & { id: string; registeredAt: string }
+type InfrastructureData = ReturnType<typeof getStationValues> & {
+  id: string; rowId: string; deviceId: string | null; deviceCount: number; registeredAt: string
+}
 
 function getColumns(
   onDelete: (infrastructure: InfrastructureData) => void,
@@ -46,7 +48,9 @@ function getColumns(
             수정
           </a>
           <button
-            aria-label={`${row.station} 삭제`}
+            aria-label={row.deviceCount <= 1
+              ? `${row.station} 주유소 삭제`
+              : `${row.station} ${row.model} 주입기 삭제`}
             className="table-action table-action--danger"
             onClick={() => onDelete(row)}
             type="button"
@@ -92,25 +96,40 @@ export function InfrastructureDataPage() {
     })
     return () => { active = false }
   }, [dateRange, stationQuery, refresh])
-  const rows = (stations ?? []).map((station) => ({
-    ...getStationValues(station), id: station.id, registeredAt: station.createdAt,
-  }))
+  const rows = (stations ?? []).flatMap((station) => {
+    const values = getStationValues(station)
+    return (station.devices.length ? station.devices : [null]).map((device) => ({
+      ...values, id: station.id, rowId: device ? `${station.id}:${device.id}` : station.id,
+      deviceId: device?.id ?? null, deviceCount: station.devices.length,
+      registeredAt: station.createdAt,
+      model: device?.model ?? '',
+      capacity: device ? `${device.capacityLiters.toLocaleString('ko-KR')}L` : '',
+    }))
+  })
 
   async function handleDelete() {
     if (!deleteTarget || submitting.current || !lifetime.current) return
     const owner = lifetime.current
     const targetOwner = modalOwner.current
     const targetId = deleteTarget.id
+    const stationDelete = deleteTarget.deviceCount <= 1
     const generation = queryGeneration.current
     const routePath = window.location.pathname
     const isCurrent = () => lifetime.current === owner && window.location.pathname === routePath
     submitting.current = true
     setDeleteError('')
     try {
-      await deleteStation(targetId)
+      const result = await deleteInfrastructureRow(targetId, deleteTarget.deviceId, stationDelete)
       if (!isCurrent()) return
+      if (result.kind === 'changed') {
+        setDeleteError('기기 정보가 변경되었습니다. 목록을 다시 확인해주세요.')
+        ++queryGeneration.current
+        setRefresh((current) => current + 1)
+        return
+      }
       if (generation === queryGeneration.current) {
-        setStations((current) => current?.filter(({ id }) => id !== targetId) ?? null)
+        setStations((current) => current?.flatMap((station) => station.id !== targetId ? [station]
+          : result.kind === 'station' ? [] : [result.station]) ?? null)
       }
       ++queryGeneration.current
       setRefresh((current) => current + 1)
@@ -127,7 +146,13 @@ export function InfrastructureDataPage() {
       if (modalOwner.current === targetOwner) {
         setDeleteError(error instanceof AdminApiError && error.status === 404
           ? '주유소를 찾을 수 없습니다.'
+          : error instanceof AdminApiError && error.status === 409
+            ? '기기 정보가 변경되었습니다. 목록을 다시 확인해주세요.'
           : '인프라 데이터 삭제 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.')
+        if (error instanceof AdminApiError && error.status === 409) {
+          ++queryGeneration.current
+          setRefresh((current) => current + 1)
+        }
       } else {
         // Closing the dialog does not cancel the server operation.
         ++queryGeneration.current
@@ -153,7 +178,7 @@ export function InfrastructureDataPage() {
         columns={getColumns((row) => { modalOwner.current = {}; setDeleteError(''); setDeleteTarget(row) })}
         emptyMessage={loadState === 'failed' ? undefined : loadState === 'loading' ? '인프라 데이터를 불러오는 중입니다.' : '조회 조건에 맞는 인프라 데이터가 없습니다.'}
         rows={rows}
-        getRowKey={(row) => row.id}
+        getRowKey={(row) => row.rowId}
       />
       {!deleteTarget && loadError && <NoticeDialog message={loadError}
         onClose={() => setLoadError('')} onRetry={() => setRefresh(current => current + 1)} />}
@@ -164,10 +189,14 @@ export function InfrastructureDataPage() {
       {deleteTarget ? (
         <ConfirmationDialog
           actionLabel="삭제"
-          description={deleteError || '삭제한 인프라 데이터는 다시 복구할 수 없습니다.'}
+          description={deleteError || (deleteTarget.deviceCount <= 1
+            ? '주유소와 연결된 모든 주입기가 삭제되며 복구할 수 없습니다.'
+            : '선택한 주입기만 삭제되며 복구할 수 없습니다.')}
           onCancel={() => { modalOwner.current = null; setDeleteTarget(null) }}
           onConfirm={handleDelete}
-          title="인프라 데이터를 삭제하시겠습니까?"
+          title={deleteTarget.deviceCount <= 1
+            ? '주유소를 삭제하시겠습니까?'
+            : '주입기를 삭제하시겠습니까?'}
         />
       ) : null}
     </section>

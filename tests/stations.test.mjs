@@ -10,10 +10,14 @@ const sources = Object.fromEntries(['adminAuth.ts', 'stations.ts', 'utils/dateRa
   }).outputText]))
 const jsx = (type, props) => ({ type, props })
 const tick = () => new Promise((resolve) => setImmediate(resolve))
-const station = (id = 'a', coords = [-35.5, -127.25]) => ({ id, businessName: `주유소 ${id}`, pole: 'Pole',
+const station = (id = 'a', coords = [-35.5, -127.25]) => ({ id, version: `version-${id}`, businessName: `주유소 ${id}`, pole: 'Pole',
   roadAddress: '서울시 강남구', note: null, latitude: coords[0], longitude: coords[1], createdAt: '2026-09-13T18:00:00Z',
   devices: [{ id: 'one', model: '모델 A', capacityLiters: 1000, active: true },
     { id: 'two', model: '모델 B', capacityLiters: 2000, active: false }] })
+const oneDeviceStation = (id = 'a', coords) => {
+  const item = station(id, coords)
+  return { ...item, devices: [item.devices[0]] }
+}
 function find(node, type) {
   if (!node || typeof node !== 'object') return undefined
   if (node.type === type) return node
@@ -105,19 +109,36 @@ function mount(kind = 'list', id = 'a') {
   return page
 }
 
-test('all device models and capacities, negative coordinates and real IDs reach the existing list', async () => {
+test('infrastructure list keeps one row per device and distinct same-name stations', async () => {
   const page = mount()
   assert.match(page.table().emptyMessage, /불러오는 중/)
-  await page.respond(0, 200, [station()])
-  const { rows, columns } = page.table()
-  assert.equal(rows[0].model, '모델 A / 모델 B')
-  assert.equal(rows[0].capacity, '1,000L / 2,000L')
-  assert.equal(rows[0].latitude, '-35.5')
-  assert.equal(rows[0].longitude, '-127.25')
-  assert.equal(columns.find(({ key }) => key === 'note').render(rows[0]), '-')
-  assert.equal(find(columns.find(({ key }) => key === 'actions').render(rows[0]), 'a').props.href, '/infrastructure/edit/a')
-  const date = new Date(station().createdAt)
-  assert.equal(columns.find(({ key }) => key === 'registeredAt').render(rows[0]), `${date.getFullYear()}. ${String(date.getMonth() + 1).padStart(2, '0')}. ${String(date.getDate()).padStart(2, '0')}`)
+  const jinju = {
+    ...station('jinju', [35.1878882400229, 128.056854392858]),
+    businessName: '사등주유소', roadAddress: '경상남도 진주시 서장대로 181',
+    devices: [{ id: 'jinju-device', model: 'ST2140S', capacityLiters: 1400, active: true }],
+  }
+  const geoje = {
+    ...station('geoje', [34.9099107772403, 128.545338908377]),
+    businessName: '사등주유소', roadAddress: '경남 거제시 사등면 거제대로 5486',
+    devices: [
+      { id: 'geoje-first', model: 'HEUD-SELF-05', capacityLiters: 2500, active: true },
+      { id: 'geoje-second', model: 'HG1000S', capacityLiters: 1000, active: true },
+    ],
+  }
+  const withoutDevice = { ...station('empty'), businessName: '기기 없는 주유소', devices: [] }
+  await page.respond(0, 200, [jinju, geoje, withoutDevice])
+  const { rows, columns, getRowKey } = page.table()
+  assert.deepEqual(rows.map(({ id, station, address, model, capacity }) => ({ id, station, address, model, capacity })), [
+    { id: 'jinju', station: '사등주유소', address: '경상남도 진주시 서장대로 181', model: 'ST2140S', capacity: '1,400L' },
+    { id: 'geoje', station: '사등주유소', address: '경남 거제시 사등면 거제대로 5486', model: 'HEUD-SELF-05', capacity: '2,500L' },
+    { id: 'geoje', station: '사등주유소', address: '경남 거제시 사등면 거제대로 5486', model: 'HG1000S', capacity: '1,000L' },
+    { id: 'empty', station: '기기 없는 주유소', address: '서울시 강남구', model: '', capacity: '' },
+  ])
+  assert.equal(columns.find(({ key }) => key === 'model').render(rows[3]).props.children, '-')
+  assert.equal(columns.find(({ key }) => key === 'capacity').render(rows[3]), '-')
+  assert.deepEqual(rows.slice(1, 3).map(getRowKey), ['geoje:geoje-first', 'geoje:geoje-second'])
+  const editLinks = rows.map((row) => find(columns.find(({ key }) => key === 'actions').render(row), 'a').props.href)
+  assert.deepEqual(editLinks, ['/infrastructure/edit/jinju', '/infrastructure/edit/geoje', '/infrastructure/edit/geoje', '/infrastructure/edit/empty'])
 })
 
 test('detail preserves every device and initial form values without concatenating capacities or stripping minus signs', async () => {
@@ -140,7 +161,7 @@ test('detail preserves every device and initial form values without concatenatin
 
 test('null coordinates stay blank in the form and unavailable in table, while real zero stays zero', async () => {
   const page = mount()
-  await page.respond(0, 200, [station('none', [null, null]), station('zero', [0, 0])])
+  await page.respond(0, 200, [oneDeviceStation('none', [null, null]), oneDeviceStation('zero', [0, 0])])
   const { rows, columns } = page.table()
   for (const key of ['latitude', 'longitude']) {
     assert.equal(columns.find((column) => column.key === key).render(rows[0]), '-')
@@ -274,11 +295,12 @@ test('a form without a save callback does not fabricate success', async () => {
 
 async function loadedPage() {
   const page = mount()
-  await page.respond(0, 200, [station('a'), station('b')])
+  await page.respond(0, 200, [oneDeviceStation('a'), oneDeviceStation('b')])
   return page
 }
-function openDelete(page, id = 'a') {
-  const row = page.table().rows.find((row) => row.id === id)
+function openDelete(page, id = 'a', model) {
+  const row = page.table().rows.find((row) => row.id === id && (model === undefined || row.model === model))
+  assert.ok(row, `Missing delete row: ${id}${model === undefined ? '' : ` / ${model}`}`)
   find(page.table().columns.find(({ key }) => key === 'actions').render(row), 'button').props.onClick()
   return find(page.render(), 'ConfirmationDialog').props
 }
@@ -286,40 +308,111 @@ function openDelete(page, id = 'a') {
 test('station delete waits for bodyless 204 and prevents duplicate confirmations before refreshing', async () => {
   const page = await loadedPage()
   const dialog = openDelete(page)
+  assert.match(`${dialog.title} ${dialog.description}`, /주유소/)
+  assert.match(`${dialog.title} ${dialog.description}`, /주입기/)
   const pending = dialog.onConfirm()
   await dialog.onConfirm()
   assert.equal(page.calls.length, 2)
   assert.equal(page.calls[1].url, '/api/v1/admin/stations/a')
-  assert.equal(page.calls[1].options.method, 'DELETE')
-  assert.equal(page.calls[1].options.body, undefined)
+  assert.equal(page.calls[1].options.method, 'GET')
   assert.equal(page.calls[1].options.credentials, 'include')
-  assert.equal(page.table().rows.length, 2)
-  assert.ok(find(page.render(), 'ConfirmationDialog'))
-  await page.respond(1, 204)
+  await page.respond(1, 200, oneDeviceStation('a'))
+  assert.equal(page.calls[2].url, '/api/v1/admin/stations/a?expectedVersion=version-a')
+  assert.equal(page.calls[2].options.method, 'DELETE')
+  assert.equal(page.calls[2].options.body, undefined)
+  assert.equal(page.calls[2].options.credentials, 'include')
+  await page.respond(2, 204)
   await pending
   assert.equal(find(page.render(), 'ConfirmationDialog'), undefined)
-  assert.equal(page.calls[2].options.method, 'GET')
-  await page.respond(2, 200, [station('b')])
+  assert.equal(page.calls[3].options.method, 'GET')
+  await page.respond(3, 200, [oneDeviceStation('b')])
   assert.deepEqual(page.table().rows.map(({ id }) => id), ['b'])
+})
+
+test('deleting one device verifies the latest station then updates it with its sibling', async () => {
+  const page = mount()
+  const item = station()
+  await page.respond(0, 200, [item])
+
+  const dialog = openDelete(page, 'a', '모델 A')
+  assert.match(`${dialog.title} ${dialog.description}`, /주입기/)
+  const pending = dialog.onConfirm()
+
+  assert.equal(page.calls.length, 2)
+  assert.equal(page.calls[1].url, '/api/v1/admin/stations/a')
+  assert.equal(page.calls[1].options.method, 'GET')
+  assert.equal(page.calls[1].options.credentials, 'include')
+  await page.respond(1, 200, item)
+  assert.equal(page.calls[2].url, '/api/v1/admin/stations/a')
+  assert.equal(page.calls[2].options.method, 'PUT')
+  assert.equal(page.calls[2].options.credentials, 'include')
+  assert.deepEqual(JSON.parse(page.calls[2].options.body), {
+    businessName: item.businessName,
+    pole: item.pole,
+    roadAddress: item.roadAddress,
+    latitude: item.latitude,
+    longitude: item.longitude,
+    devices: [{ id: 'two', model: '모델 B', capacityLiters: 2000 }],
+    expectedVersion: item.version,
+  })
+
+  const remaining = { ...item, devices: [item.devices[1]] }
+  await page.respond(2, 200, remaining)
+  await pending
+  assert.equal(find(page.render(), 'ConfirmationDialog'), undefined)
+  assert.equal(page.calls[3].options.method, 'GET')
+  await page.respond(3, 200, [remaining])
+  assert.deepEqual(page.table().rows.map(({ id, model, capacity }) => ({ id, model, capacity })), [
+    { id: 'a', model: '모델 B', capacity: '2,000L' },
+  ])
+})
+
+test('device deletion keeps its retry and latest-search protections', async () => {
+  const page = mount()
+  const item = station('a')
+  await page.respond(0, 200, [item])
+
+  const first = openDelete(page, 'a', '모델 A').onConfirm()
+  await page.respond(1, 404, { code: 'STATION_NOT_FOUND' })
+  await first
+  assert.deepEqual(page.table().rows.map(({ model }) => model), ['모델 A', '모델 B'])
+  assert.match(find(page.render(), 'ConfirmationDialog').props.description, /찾을 수 없습니다/)
+
+  const retry = find(page.render(), 'ConfirmationDialog').props.onConfirm()
+  assert.equal(page.calls[2].options.method, 'GET')
+  page.change('SearchFilter', '다른 검색어')
+  await page.respond(2, 200, item)
+  assert.equal(page.calls[4].options.method, 'PUT')
+  await page.respond(4, 200, { ...item, devices: [item.devices[1]] })
+  await retry
+  page.render()
+  assert.equal(new URL(page.calls[5].url, 'http://localhost').searchParams.get('stationQuery'), '다른 검색어')
+  await page.respond(5, 200, [])
+  await page.respond(3, 200, [item])
+  assert.deepEqual(page.table().rows, [])
 })
 
 test('delete errors preserve data and allow retry inside the existing confirmation dialog', async () => {
   for (const status of [404, 500, 200]) {
     const page = await loadedPage()
     const pending = openDelete(page).onConfirm()
-    await page.respond(1, status, status === 404 ? { code: 'STATION_NOT_FOUND' } : {})
+    await page.respond(1, 200, oneDeviceStation('a'))
+    assert.equal(page.calls[2].options.method, 'DELETE')
+    await page.respond(2, status, status === 404 ? { code: 'STATION_NOT_FOUND' } : {})
     await pending
     assert.equal(page.table().rows.length, 2)
     assert.match(find(page.render(), 'ConfirmationDialog').props.description,
       status === 404 ? /찾을 수 없습니다/ : /삭제 중 오류/)
     const retry = find(page.render(), 'ConfirmationDialog').props.onConfirm()
-    await page.respond(2, 204)
+    await page.respond(3, 200, oneDeviceStation('a'))
+    await page.respond(4, 204)
     await retry
     assert.equal(find(page.render(), 'ConfirmationDialog'), undefined)
   }
   const offline = await loadedPage()
   const pending = openDelete(offline).onConfirm()
-  offline.calls[1].reject(new TypeError('offline'))
+  await offline.respond(1, 200, oneDeviceStation('a'))
+  offline.calls[2].reject(new TypeError('offline'))
   await pending
   assert.equal(offline.table().rows.length, 2)
   assert.match(find(offline.render(), 'ConfirmationDialog').props.description, /삭제 중 오류/)
@@ -338,13 +431,19 @@ test('cancel does not send DELETE; cancelling in flight refreshes without affect
     const next = openDelete(page, 'b')
     await next.onConfirm()
     assert.equal(page.calls.length, 2)
-    await page.respond(1, status, status === 500 ? {} : undefined)
+    await page.respond(1, 200, oneDeviceStation('a'))
+    assert.equal(page.calls[2].options.method, 'DELETE')
+    await page.respond(2, status, status === 500 ? {} : undefined)
     await pending
-    assert.equal(find(page.render(), 'ConfirmationDialog').props.description, '삭제한 인프라 데이터는 다시 복구할 수 없습니다.')
-    await page.respond(2, 200, status === 204 ? [station('b')] : [station('a'), station('b')])
+    assert.equal(find(page.render(), 'ConfirmationDialog').props.description, '주유소와 연결된 모든 주입기가 삭제되며 복구할 수 없습니다.')
+    await page.respond(3, 200, status === 204 ? [oneDeviceStation('b')] : [oneDeviceStation('a'), oneDeviceStation('b')])
     const nextPending = find(page.render(), 'ConfirmationDialog').props.onConfirm()
-    assert.equal(page.calls[3].url, '/api/v1/admin/stations/b')
-    await page.respond(3, 204)
+    assert.equal(page.calls[4].url, '/api/v1/admin/stations/b')
+    assert.equal(page.calls[4].options.method, 'GET')
+    await page.respond(4, 200, oneDeviceStation('b'))
+    assert.equal(page.calls[5].url, '/api/v1/admin/stations/b?expectedVersion=version-b')
+    assert.equal(page.calls[5].options.method, 'DELETE')
+    await page.respond(5, 204)
     await nextPending
   }
 })
@@ -353,12 +452,14 @@ test('completed deletion invalidates older results and reloads the latest search
   const page = await loadedPage()
   const pending = openDelete(page).onConfirm()
   page.change('SearchFilter', '주유소 b')
-  await page.respond(1, 204)
+  await page.respond(1, 200, oneDeviceStation('a'))
+  assert.equal(page.calls[3].options.method, 'DELETE')
+  await page.respond(3, 204)
   await pending
   page.render()
-  assert.equal(new URL(page.calls[3].url, 'http://localhost').searchParams.get('stationQuery'), '주유소 b')
-  await page.respond(3, 200, [station('b')])
-  await page.respond(2, 200, [station('a'), station('b')])
+  assert.equal(new URL(page.calls[4].url, 'http://localhost').searchParams.get('stationQuery'), '주유소 b')
+  await page.respond(4, 200, [oneDeviceStation('b')])
+  await page.respond(2, 200, [oneDeviceStation('a'), oneDeviceStation('b')])
   assert.deepEqual(page.table().rows.map(({ id }) => id), ['b'])
 })
 
@@ -366,12 +467,13 @@ test('departed-page delete responses cannot refresh or redirect the new screen; 
   for (const status of [204, 401, 500]) {
     const page = await loadedPage()
     const pending = openDelete(page).onConfirm()
+    await page.respond(1, 200, oneDeviceStation('a'))
     page.unmount()
     page.window.location.pathname = '/drivers'
-    await page.respond(1, status, status === 204 ? undefined : { code: 'INVALID_ADMIN_SESSION' })
+    await page.respond(2, status, status === 204 ? undefined : { code: 'INVALID_ADMIN_SESSION' })
     await pending
     assert.equal(page.window.location.pathname, '/drivers')
-    assert.equal(page.calls.length, 2)
+    assert.equal(page.calls.length, 3)
   }
   const current = await loadedPage()
   const pending = openDelete(current).onConfirm()
@@ -419,6 +521,7 @@ test('update preserves every existing device ID and only changes the single devi
     assert.equal(page.calls[1].options.method, 'PUT')
     const body = JSON.parse(page.calls[1].options.body)
     assert.equal(body.businessName, '수정한 주유소')
+    assert.equal(body.expectedVersion, item.version)
     assert.ok(!('note' in body))
     assert.deepEqual(body.devices, item.devices.length === 1
       ? [{ id: item.devices[0].id, model: '변경 모델', capacityLiters: 2500 }]
@@ -443,11 +546,13 @@ test('ambiguous multi-device edits and invalid numbers never issue a save reques
 
 test('save errors do not succeed and retain a retry path', async () => {
   for (const [status, code] of [[400, 'VALIDATION_ERROR'], [404, 'STATION_NOT_FOUND'],
-    [409, 'UNKNOWN_DEVICE'], [409, 'DUPLICATE_DEVICE_ID']]) {
+    [409, 'UNKNOWN_DEVICE'], [409, 'DUPLICATE_DEVICE_ID'], [409, 'STATION_VERSION_CONFLICT']]) {
     const page = mount()
     const pending = page.api.saveStation(valuesFor(page), singleStation())
     await page.respond(1, status, { code })
-    assert.equal((await pending).ok, false)
+    const result = await pending
+    assert.equal(result.ok, false)
+    if (code === 'STATION_VERSION_CONFLICT') assert.match(result.message, /새로 열어|다시 확인/)
     const retry = page.api.saveStation(valuesFor(page), singleStation())
     await page.respond(2, 200, singleStation())
     assert.deepEqual(await retry, { ok: true })
