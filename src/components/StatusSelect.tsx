@@ -5,7 +5,7 @@ export type ApprovalStatus = '승인' | '대기' | '반려'
 type StatusSelectProps = {
   disabled?: boolean
   label: string
-  onChange: (status: '승인' | '반려') => void
+  onChange: (status: ApprovalStatus) => void
   status: ApprovalStatus
 }
 
@@ -18,13 +18,12 @@ export function StatusSelect({ disabled = false, label, onChange, status }: Stat
         value={status}
         onChange={(event) => {
           const nextStatus = event.target.value
-          if (nextStatus !== status && (nextStatus === '승인' || nextStatus === '반려')) onChange(nextStatus)
+          if (nextStatus !== status && (nextStatus === '승인' || nextStatus === '대기' || nextStatus === '반려')) onChange(nextStatus)
         }}
         aria-label={`${label} 승인 여부`}
       >
-        <option value="대기" disabled hidden>대기</option>
-        <option value="승인">승인</option>
-        <option value="반려">반려</option>
+        {(['승인', '대기', '반려'] as const).map(option =>
+          <option key={option} value={option} disabled={option === status} hidden={option === status}>{option}</option>)}
       </select>
       <span className="approval-status__icon" aria-hidden="true">
         <img src={chevronDownIcon} alt="" />

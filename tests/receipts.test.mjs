@@ -217,20 +217,68 @@ test('dropdown preserves the current status on cancel and locks settlement-attac
     assert.equal(select().value, '대기')
     assert.equal(select().disabled, false)
   }
-  for (const [status, label, action] of [['approved', '승인', '반려'], ['rejected', '반려', '승인']]) {
+  for (const [status, label] of [['approved', '승인'], ['rejected', '반려'], ['pending', '대기']]) {
     const receipt = { ...row('a'), status }
     assert.equal(find(page.status(receipt), 'select').props.value, label)
     page.review(receipt, label)
     assert.equal(page.modal(), undefined)
-    page.review(receipt, action)
-    assert.equal(page.modal().title, `${action}하시겠습니까?`)
-    page.modal().onCancel()
-    assert.equal(find(page.status(receipt), 'select').props.value, label)
+    const actions = ['승인', '대기', '반려'].filter(action => action !== label)
+    assert.deepEqual(find(page.status(receipt), 'select').props.children
+      .filter(option => !option.props.disabled && !option.props.hidden).map(option => option.props.value), actions)
+    for (const action of actions) {
+      page.review(receipt, action)
+      const modal = page.modal()
+      assert.equal(modal.title, action === '대기' ? '대기 상태로 변경하시겠습니까?' : `${action}하시겠습니까?`)
+      modal.onCancel()
+      await modal.onConfirm()
+      assert.equal(page.calls.length, 1)
+      assert.equal(find(page.status(receipt), 'select').props.value, label)
+    }
   }
   for (const status of ['pending', 'approved', 'rejected']) {
     const receipt = { ...row('a'), status, settlementId: 'settled' }
     assert.equal(find(page.status(receipt), 'select'), undefined)
     assert.equal(page.review(receipt, '승인'), false)
+  }
+})
+
+test('returning approved or rejected receipts to pending requires confirmation and preserves rows on failure', async () => {
+  for (const status of ['approved', 'rejected']) {
+    const page = mount()
+    const receipt = { ...row('a'), status, finalAmount: status === 'approved' ? 10000 : null,
+      mileageAmount: status === 'approved' ? 100 : null, rejectionReason: status === 'rejected' ? '금액 확인' : null }
+    await page.respond(0, 200, [receipt])
+    page.review(receipt, '대기')
+    assert.equal(page.calls.length, 1)
+    assert.equal(page.field('finalAmount'), undefined)
+    assert.equal(find(page.render(), 'textarea'), undefined)
+    assert.equal(page.modal().actionLabel, '확인')
+    const confirm = page.modal().onConfirm
+    confirm(); confirm()
+    assert.equal(page.calls.length, 2)
+    assert.equal(page.calls[1].url, '/api/v1/admin/mileage/applications/a/pending')
+    assert.equal(page.calls[1].options.method, 'POST')
+    assert.deepEqual(JSON.parse(page.calls[1].options.body), { reviewVersion: receipt.reviewVersion })
+    assert.deepEqual(page.table().rows, [receipt])
+    await page.respond(1, 500, {})
+    assert.deepEqual(page.table().rows, [receipt])
+    page.modal().onConfirm()
+    const pending = { ...row('a'), reviewVersion: 'b'.repeat(64) }
+    await page.respond(2, 200, pending)
+    assert.equal(page.modal(), undefined)
+    assert.deepEqual(page.table().rows, [pending])
+    await page.respond(3, 200, [pending])
+    page.unmount()
+  }
+})
+
+test('pending refuses responses that retain a final amount, mileage or rejection reason', async () => {
+  for (const extra of [{ finalAmount: 10000 }, { mileageAmount: 100 }, { rejectionReason: '기존 사유' }]) {
+    const page = mount()
+    const result = assert.rejects(page.api.reviewReceipt(row('a'), 'pending'))
+    await page.respond(1, 200, { ...row('a'), ...extra })
+    await result
+    page.unmount()
   }
 })
 

@@ -11,6 +11,7 @@ import { AdminApiError, isInvalidAdminSession } from '../adminAuth'
 import { getReceiptPhoto, getReceipts, reviewReceipt, RECEIPTS_LOAD_ERROR, type Receipt } from '../receipts'
 
 const statusNames = { approved: '승인', pending: '대기', rejected: '반려' } as const
+const reviewNames = { approve: '승인', pending: '대기', reject: '반려' } as const
 const amount = (value: number | null) => value === null ? '-' : value.toLocaleString('ko-KR')
 const APPROVAL_AMOUNT_ERROR = '확정 금액은 0 이상의 정수로 입력해주세요.'
 const APPROVAL_LITERS_ERROR = '주유량은 정수 5자리, 소수점 3자리 이내의 숫자로 입력해주세요.'
@@ -47,7 +48,7 @@ function receiptDate(value: string | null) {
 }
 
 type PhotoTarget = { path: string | null; label: string }
-type ReviewTarget = { receipt: Receipt; action: 'approve' | 'reject' }
+type ReviewTarget = { receipt: Receipt; action: 'approve' | 'reject' | 'pending' }
 
 function getColumns(onPhoto: (target: PhotoTarget) => void, onReview: (target: ReviewTarget) => void, reviewDisabled: boolean): readonly DataTableColumn<Receipt>[] {
   const photoButton = (row: Receipt, kind: 'receipt' | 'meter') => <button className="text-button" type="button"
@@ -67,7 +68,7 @@ function getColumns(onPhoto: (target: PhotoTarget) => void, onReview: (target: R
     { key: 'receiptDate', label: '영수일시', render: (row) => receiptDate(row.receiptAt) },
     { key: 'status', label: '승인여부', render: (row) => row.settlementId === null
       ? <StatusSelect label={row.name} status={statusNames[row.status]} disabled={reviewDisabled}
-        onChange={(status) => onReview({ receipt: row, action: status === '승인' ? 'approve' : 'reject' })} />
+        onChange={(status) => onReview({ receipt: row, action: status === '승인' ? 'approve' : status === '반려' ? 'reject' : 'pending' })} />
       : <ApprovalStatusDisplay name={row.name} status={row.status} /> },
   ]
 }
@@ -160,7 +161,7 @@ export function ReceiptDataPage() {
       if (!/^\d{1,5}(?:\.\d{1,3})?$/.test(liters)) {
         setReviewError(APPROVAL_LITERS_ERROR); return
       }
-    } else if (!rejectionReason.trim() || rejectionReason.trim().length > 150) {
+    } else if (review.action === 'reject' && (!rejectionReason.trim() || rejectionReason.trim().length > 150)) {
       setReviewError(REJECTION_REASON_ERROR); return
     }
     const owner = lifetime.current
@@ -173,7 +174,7 @@ export function ReceiptDataPage() {
     setReviewError('')
     try {
       const updated = await reviewReceipt(review.receipt, review.action,
-        review.action === 'approve' ? { finalAmount, liters } : { rejectionReason })
+        review.action === 'approve' ? { finalAmount, liters } : review.action === 'reject' ? { rejectionReason } : undefined)
       if (!isCurrent()) return
       if (generation === queryGeneration.current) setRows((current) => current?.map((row) => row.id === updated.id ? updated : row) ?? null)
       reload()
@@ -212,9 +213,9 @@ export function ReceiptDataPage() {
         onClose={() => setLoadError('')} onRetry={() => setRefresh(current => current + 1)} />}
       {photo && <ReceiptPhotoDialog target={photo} onClose={() => setPhoto(null)} />}
       {review && <ConfirmationDialog
-        title={`${review.action === 'approve' ? '승인' : '반려'}하시겠습니까?`}
-        description={reviewError || `선택한 신청을 ${review.action === 'approve' ? '승인' : '반려'}합니다.`}
-        actionLabel={reviewConflict ? '확인' : review.action === 'approve' ? '승인' : '반려'}
+        title={review.action === 'pending' ? '대기 상태로 변경하시겠습니까?' : `${reviewNames[review.action]}하시겠습니까?`}
+        description={reviewError || (review.action === 'pending' ? '선택한 신청을 대기 상태로 변경합니다.' : `선택한 신청을 ${reviewNames[review.action]}합니다.`)}
+        actionLabel={reviewConflict || review.action === 'pending' ? '확인' : reviewNames[review.action]}
         disabled={reviewSubmitting}
         onCancel={closeReview} onConfirm={handleReview}>
         {review.action === 'approve' && <div className="form-fields">

@@ -56,18 +56,19 @@ function parseReceipt(value: unknown): Receipt {
     .map((field) => [field, row[field]])) as Receipt
 }
 
-export async function reviewReceipt(receipt: Pick<Receipt, 'id' | 'reviewVersion'>, action: 'approve' | 'reject',
-  input: { finalAmount: number; liters: string } | { rejectionReason: string }): Promise<Receipt> {
-  const approval = 'finalAmount' in input ? input : undefined
-  const rejectionReason = 'rejectionReason' in input ? input.rejectionReason.trim() : undefined
+export async function reviewReceipt(receipt: Pick<Receipt, 'id' | 'reviewVersion'>, action: 'approve' | 'reject' | 'pending',
+  input?: { finalAmount: number; liters: string } | { rejectionReason: string }): Promise<Receipt> {
+  const approval = input && 'finalAmount' in input ? input : undefined
+  const rejectionReason = input && 'rejectionReason' in input ? input.rejectionReason.trim() : undefined
   if (action === 'approve' && !approval) throw new Error('확정 금액과 주유량을 입력해주세요.')
   if (action === 'reject' && (!rejectionReason || rejectionReason.length > 150)) throw new Error('반려 사유를 150자 이내로 입력해주세요.')
   const data = await requestAdmin(`mileage/applications/${encodeURIComponent(receipt.id)}/${action}`, {
-    method: 'POST', body: { reviewVersion: receipt.reviewVersion, ...(action === 'approve' ? approval : { rejectionReason }) },
+    method: 'POST', body: { reviewVersion: receipt.reviewVersion, ...(action === 'approve' ? approval : action === 'reject' ? { rejectionReason } : {}) },
   })
   const result = parseReceipt(data)
   if (result.id !== receipt.id ||
-    result.status !== (action === 'approve' ? 'approved' : 'rejected') ||
+    result.status !== (action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : 'pending') ||
+    (action === 'pending' && (result.finalAmount !== null || result.mileageAmount !== null || result.rejectionReason !== null)) ||
     (action === 'reject' && result.rejectionReason !== rejectionReason) ||
     (action === 'approve' && (result.finalAmount !== approval?.finalAmount || result.mileageAmount === null))) throw new Error('심사 결과를 확인하지 못했습니다. 다시 시도해주세요.')
   return result
