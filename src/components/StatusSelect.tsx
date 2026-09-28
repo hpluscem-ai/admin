@@ -18,7 +18,7 @@ export function StatusSelect({ disabled = false, label, onChange, status }: Stat
         value={status}
         onChange={(event) => {
           const nextStatus = event.target.value
-          if (nextStatus === '승인' || nextStatus === '반려') onChange(nextStatus)
+          if (nextStatus !== status && (nextStatus === '승인' || nextStatus === '반려')) onChange(nextStatus)
         }}
         aria-label={`${label} 승인 여부`}
       >

@@ -195,7 +195,7 @@ test('photo retrieval uses a protected same-origin route and refuses missing, ex
   await assert.rejects(invalid)
 })
 
-test('pending dropdown opens either confirmation, preserves pending on cancel and cannot edit completed or settled rows', async () => {
+test('dropdown preserves the current status on cancel and locks settlement-attached rows', async () => {
   const page = mount()
   await page.respond(0, 200, [row('a')])
   const select = () => find(page.status(row('a')), 'select').props
@@ -214,8 +214,18 @@ test('pending dropdown opens either confirmation, preserves pending on cancel an
     assert.equal(select().value, '대기')
     assert.equal(select().disabled, false)
   }
-  for (const receipt of [{ ...row('a'), status: 'approved' }, { ...row('a'), status: 'rejected' },
-    { ...row('a'), settlementId: 'settled' }]) {
+  for (const [status, label, action] of [['approved', '승인', '반려'], ['rejected', '반려', '승인']]) {
+    const receipt = { ...row('a'), status }
+    assert.equal(find(page.status(receipt), 'select').props.value, label)
+    page.review(receipt, label)
+    assert.equal(page.modal(), undefined)
+    page.review(receipt, action)
+    assert.equal(page.modal().title, `${action}하시겠습니까?`)
+    page.modal().onCancel()
+    assert.equal(find(page.status(receipt), 'select').props.value, label)
+  }
+  for (const status of ['pending', 'approved', 'rejected']) {
+    const receipt = { ...row('a'), status, settlementId: 'settled' }
     assert.equal(find(page.status(receipt), 'select'), undefined)
     assert.equal(page.review(receipt, '승인'), false)
   }
@@ -238,13 +248,41 @@ test('approval sends confirmed amount and decimal liters, locks edits and update
   assert.equal(page.field('finalAmount').disabled, true)
   assert.equal(page.field('liters').disabled, true)
   assert.equal(page.table().rows[0].status, 'pending')
-  const approved = { ...row('a'), status: 'approved', finalAmount: 1234, mileageAmount: 103 }
+  const approved = { ...row('a'), reviewVersion: 'b'.repeat(64), status: 'approved', finalAmount: 1234, mileageAmount: 103 }
   await page.respond(1, 200, approved)
   assert.equal(page.modal(), undefined)
   await page.respond(2, 200, [approved])
   assert.deepEqual(page.table().rows, [approved])
-  assert.equal(page.review(approved, '승인'), false)
+  page.review(approved, '승인')
+  assert.equal(page.modal(), undefined)
   assert.equal(page.review({ ...row('a'), settlementId: 'settled' }, '반려'), false)
+})
+
+test('approved and rejected receipts can reverse using the latest version without optimistic changes', async () => {
+  const page = mount()
+  const approved = { ...row('a'), status: 'approved', finalAmount: 1234, mileageAmount: 103 }
+  const rejected = { ...row('a'), reviewVersion: 'b'.repeat(64), status: 'rejected', rejectionReason: '금액 재확인' }
+  await page.respond(0, 200, [approved])
+  page.review(approved, '반려')
+  page.reason(rejected.rejectionReason)
+  page.modal().onConfirm()
+  await page.respond(1, 500, {})
+  assert.equal(page.table().rows[0].status, 'approved')
+  page.modal().onConfirm()
+  assert.equal(JSON.parse(page.calls[2].options.body).reviewVersion, approved.reviewVersion)
+  await page.respond(2, 200, rejected)
+  assert.equal(page.modal(), undefined)
+  await page.respond(3, 200, [rejected])
+  page.review(rejected, '승인')
+  page.approval('2000', '10')
+  page.modal().onConfirm()
+  assert.equal(page.table().rows[0].status, 'rejected')
+  assert.equal(JSON.parse(page.calls[4].options.body).reviewVersion, rejected.reviewVersion)
+  const reapproved = { ...approved, reviewVersion: 'c'.repeat(64), finalAmount: 2000, mileageAmount: 200 }
+  await page.respond(4, 200, reapproved)
+  assert.equal(page.modal(), undefined)
+  await page.respond(5, 200, [reapproved])
+  assert.deepEqual(page.table().rows, [reapproved])
 })
 
 test('review failure preserves pending state and retries the entered rejection reason', async () => {

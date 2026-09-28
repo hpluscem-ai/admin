@@ -66,7 +66,7 @@ export async function reviewReceipt(receipt: Pick<Receipt, 'id' | 'reviewVersion
     method: 'POST', body: { reviewVersion: receipt.reviewVersion, ...(action === 'approve' ? approval : { rejectionReason }) },
   })
   const result = parseReceipt(data)
-  if (result.id !== receipt.id || result.reviewVersion !== receipt.reviewVersion ||
+  if (result.id !== receipt.id ||
     result.status !== (action === 'approve' ? 'approved' : 'rejected') ||
     (action === 'reject' && result.rejectionReason !== rejectionReason) ||
     (action === 'approve' && (result.finalAmount !== approval?.finalAmount || result.mileageAmount === null))) throw new Error('심사 결과를 확인하지 못했습니다. 다시 시도해주세요.')

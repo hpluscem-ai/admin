@@ -65,8 +65,8 @@ function getColumns(onPhoto: (target: PhotoTarget) => void, onReview: (target: R
     { key: 'finalAmount', label: '최종 금액', render: (row) => amount(row.finalAmount) },
     { key: 'mileage', label: '적립 마일리지', render: (row) => amount(row.mileageAmount) },
     { key: 'receiptDate', label: '영수일시', render: (row) => receiptDate(row.receiptAt) },
-    { key: 'status', label: '승인여부', render: (row) => row.status === 'pending' && row.settlementId === null
-      ? <StatusSelect label={row.name} status="대기" disabled={reviewDisabled}
+    { key: 'status', label: '승인여부', render: (row) => row.settlementId === null
+      ? <StatusSelect label={row.name} status={statusNames[row.status]} disabled={reviewDisabled}
         onChange={(status) => onReview({ receipt: row, action: status === '승인' ? 'approve' : 'reject' })} />
       : <ApprovalStatusDisplay name={row.name} status={row.status} /> },
   ]
