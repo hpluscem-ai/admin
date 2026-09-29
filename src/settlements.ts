@@ -2,7 +2,7 @@ import { AdminApiError, requestAdmin } from './adminAuth'
 import type { LogisticsCompany } from './logisticsCompanies'
 import { bankCodeOptions } from './data/bankCodeOptions'
 
-export type SettlementCompany = LogisticsCompany & { active: boolean; mileage: number; transferStatus: 'pending' | 'completed' | null }
+export type SettlementCompany = LogisticsCompany & { active: boolean; mileage: number; registeredMileage: number; additionalUnpaidMileage: number; transferStatus: 'pending' | 'completed' | null }
 
 export async function getSettlements(month: string): Promise<SettlementCompany[]> {
   const data = await requestAdmin(`settlements?${new URLSearchParams({ month })}`)
@@ -12,7 +12,8 @@ export async function getSettlements(month: string): Promise<SettlementCompany[]
     const value = row as Record<string, unknown>
     const fields = ['id', 'businessName', 'businessNumber', 'corporateRegistrationNumber', 'businessAddress', 'managerName', 'managerPhone', 'bankCode', 'accountNumber', 'accountHolder']
     if (fields.some(field => typeof value[field] !== 'string' || !value[field]) || typeof value.active !== 'boolean' ||
-      !Number.isSafeInteger(value.mileage) || (value.mileage as number) < 0 || ![null, 'pending', 'completed'].includes(value.transferStatus as string | null)) throw new Error('Invalid settlement response')
+      [value.mileage, value.registeredMileage, value.additionalUnpaidMileage].some(amount => !Number.isSafeInteger(amount) || (amount as number) < 0) ||
+      ![null, 'pending', 'completed'].includes(value.transferStatus as string | null)) throw new Error('Invalid settlement response')
     const bank = bankCodeOptions.find(({ code }) => code === value.bankCode)?.name
     if (!bank) throw new Error('Invalid settlement bank')
     return { ...value, bank } as SettlementCompany

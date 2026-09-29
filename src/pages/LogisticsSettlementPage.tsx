@@ -10,7 +10,7 @@ import { DataPageHeader } from '../components/DataPageHeader'
 import { DataTable, type DataTableColumn } from '../components/DataTable'
 import { SearchFilter } from '../components/PageFilters'
 
-function toPreviousKstMonthValue(date = new Date()) {
+function toCurrentKstMonthValue(date = new Date()) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Seoul',
     year: 'numeric',
@@ -19,7 +19,7 @@ function toPreviousKstMonthValue(date = new Date()) {
   const year = Number(parts.find((part) => part.type === 'year')?.value)
   const month = Number(parts.find((part) => part.type === 'month')?.value)
 
-  return `${month === 1 ? year - 1 : year}-${String(month === 1 ? 12 : month - 1).padStart(2, '0')}`
+  return `${year}-${String(month).padStart(2, '0')}`
 }
 
 function formatMonth(value: string) {
@@ -64,8 +64,13 @@ function getColumns(
     { key: 'accountNumber', label: '계좌번호', render: (row) => row.accountNumber },
     { key: 'bank', label: '은행', render: (row) => row.bank },
     { key: 'accountHolder', label: '예금주', render: (row) => row.accountHolder },
-    { key: 'mileage', label: '적립 마일리지', render: (row) => row.mileage.toLocaleString('ko-KR') },
-    { key: 'transferStatus', label: '이체 상태', render: (row) => row.transferStatus === 'completed' ? '이체완료' : row.transferStatus === 'pending' ? '이체대기' : '-' },
+    { key: 'mileage', label: '적립 마일리지', render: (row) => row.registeredMileage === row.mileage
+      ? row.mileage.toLocaleString('ko-KR')
+      : <>등록 {row.registeredMileage.toLocaleString('ko-KR')}<br />이체 대상 {row.mileage.toLocaleString('ko-KR')}</> },
+    { key: 'transferStatus', label: '이체 상태', render: (row) => <>
+      {row.transferStatus === 'completed' ? '이체완료' : row.transferStatus === 'pending' ? '이체대기' : '-'}
+      {row.additionalUnpaidMileage > 0 && <> <br />추가 미지급 {row.additionalUnpaidMileage.toLocaleString('ko-KR')}</>}
+    </> },
     {
       key: 'actions',
       label: '관리',
@@ -100,7 +105,7 @@ export function LogisticsSettlementPage() {
   const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'failed'>('loading')
   const [fileError, setFileError] = useState('')
   const [businessNameQuery, setBusinessNameQuery] = useState('')
-  const [selectedMonth, setSelectedMonth] = useState(toPreviousKstMonthValue)
+  const [selectedMonth, setSelectedMonth] = useState(toCurrentKstMonthValue)
   const [deactivationTarget, setDeactivationTarget] = useState<LogisticsCompany | null>(null)
   const [deactivationError, setDeactivationError] = useState('')
   const [fileBusy, setFileBusy] = useState(false)

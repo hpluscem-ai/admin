@@ -10,7 +10,7 @@ function nodes(tree, name) {
   if (!tree || typeof tree !== 'object') return []
   return [...((typeof tree.type==='function'?tree.type.name:tree.type)===name ? [tree] : []), ...[tree.props?.children].flat(Infinity).flatMap(child=>nodes(child,name))]
 }
-const company = { id:'a',businessName:'물류',businessNumber:'123',corporateRegistrationNumber:'456',businessAddress:'서울',managerName:'담당자',managerPhone:'01012345678',bankCode:'4',accountNumber:'00123',accountHolder:'예금주',active:true,mileage:3000,transferStatus:'pending' }
+const company = { id:'a',businessName:'물류',businessNumber:'123',corporateRegistrationNumber:'456',businessAddress:'서울',managerName:'담당자',managerPhone:'01012345678',bankCode:'4',accountNumber:'00123',accountHolder:'예금주',active:true,mileage:3000,registeredMileage:3000,additionalUnpaidMileage:0,transferStatus:'pending' }
 const data={ accumulatedMileage:3000,settlementMileage:4000,matchedCount:2,mismatchedCount:1,receipts:[],chart:[{date:'2026-08-01',common:3000,affiliation:1000}],affiliations:[{value:'a',label:'동일 이름'},{value:'b',label:'동일 이름'}] }
 function mount(page='LogisticsSettlementPage') {
  const calls=[],slots=[],effects=[],downloads=[],window={location:{pathname:page==='DashboardPage'?'/dashboard':'/settlements'}};let index=0
@@ -38,13 +38,13 @@ function mount(page='LogisticsSettlementPage') {
 const table=h=>nodes(h.render(),'DataTable')[0].props
 const upload=(h,file=new File(['example'],'paid.xls'))=>{const input=nodes(h.render(),'input').find(n=>n.props.type==='file');const target={files:[file],value:'paid.xls'};input.props.onChange({currentTarget:target});assert.equal(target.value,'')}
 
-test('settlement opens on the prior KST calendar month, including January rollover',()=>{
+test('settlement opens on the current KST calendar month, including month and year boundaries',()=>{
  const NativeDate=Date
  for(const [now,month] of [
-  ['2025-12-31T15:00:00.000Z','2025-12'],
-  ['2026-09-30T14:59:59.999Z','2026-08'],
-  ['2026-09-30T15:00:00.000Z','2026-09'],
-  ['2026-03-31T12:00:00.000Z','2026-02'],
+  ['2025-12-31T15:00:00.000Z','2026-01'],
+  ['2026-09-30T14:59:59.999Z','2026-09'],
+  ['2026-09-30T15:00:00.000Z','2026-10'],
+  ['2026-03-31T12:00:00.000Z','2026-03'],
  ]){
   class FrozenDate extends NativeDate {
    constructor(value){super(value ?? now)}
@@ -98,9 +98,18 @@ test('current file session expiry redirects and invalid XLS response never downl
 })
 test('successful empty data differs from malformed/failed settlement responses',async()=>{
  const good=mount();await good.respond(0,200,[]);assert.match(table(good).emptyMessage,/없습니다/)
- for(const result of [[{...company,mileage:null}],[{...company,mileage:9007199254740992}],[{...company,transferStatus:'sent'}]]){
+ for(const result of [[{...company,mileage:null}],[{...company,mileage:9007199254740992}],[{...company,registeredMileage:-1}],[{...company,additionalUnpaidMileage:null}],[{...company,transferStatus:'sent'}]]){
  const h=mount();await h.respond(0,200,result);assert.match(nodes(h.render(),'NoticeDialog')[0].props.message,/불러오지 못/);assert.equal(table(h).emptyMessage,undefined)
  }
+})
+test('registration month shows its whole approved mileage beside the frozen transfer and unpaid addition',async()=>{
+ const h=mount();await h.respond(0,200,[{...company,mileage:3000,registeredMileage:4200,additionalUnpaidMileage:1200,transferStatus:'completed'}])
+ const t=table(h),row=t.rows[0]
+ assert.match(JSON.stringify(t.columns.find(c=>c.key==='mileage').render(row)),/등록/)
+ assert.match(JSON.stringify(t.columns.find(c=>c.key==='mileage').render(row)),/4,200/)
+ assert.match(JSON.stringify(t.columns.find(c=>c.key==='mileage').render(row)),/3,000/)
+ assert.match(JSON.stringify(t.columns.find(c=>c.key==='transferStatus').render(row)),/추가 미지급/)
+ assert.match(JSON.stringify(t.columns.find(c=>c.key==='transferStatus').render(row)),/1,200/)
 })
 test('inactive historical settlement row preserves account and amount but has no live edit/delete operation',async()=>{
  const h=mount();await h.respond(0,200,[{...company,active:false}]);const t=table(h),actions=t.columns.find(c=>c.key==='actions').render(t.rows[0]);
