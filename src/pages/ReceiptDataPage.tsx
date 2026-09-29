@@ -64,6 +64,7 @@ function getColumns(onPhoto: (target: PhotoTarget) => void, onReview: (target: R
     { key: 'meterAmount', label: '계기판 금액', render: (row) => amount(row.meterAmount) },
     { key: 'match', label: '일치여부', render: (row) => <span className="match-result" data-match={row.matchStatus === 'matched' ? true : row.matchStatus === 'mismatched' ? false : undefined}>{row.matchStatus === 'matched' ? '일치' : row.matchStatus === 'mismatched' ? '불일치' : '-'}</span> },
     { key: 'finalAmount', label: '최종 금액', render: (row) => amount(row.finalAmount) },
+    { key: 'liters', label: '주유량(L)', render: (row) => row.liters ?? '-' },
     { key: 'mileage', label: '적립 마일리지', render: (row) => amount(row.mileageAmount) },
     { key: 'receiptDate', label: '영수일시', render: (row) => receiptDate(row.receiptAt) },
     { key: 'status', label: '승인여부', render: (row) => row.settlementId === null

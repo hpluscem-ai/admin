@@ -12,6 +12,7 @@ export type Receipt = {
   receiptAmount: number | null
   meterAmount: number | null
   finalAmount: number | null
+  liters: string | null
   mileageAmount: number | null
   receiptAt: string | null
   matchStatus: 'pending' | 'matched' | 'mismatched' | 'ocr_failed' | 'duplicate_suspected'
@@ -40,6 +41,7 @@ function parseReceipt(value: unknown): Receipt {
     (row.settlementId !== null && (typeof row.settlementId !== 'string' || !row.settlementId.trim())) ||
     texts.some((field) => typeof row[field] !== 'string' || !row[field].trim()) ||
     amounts.some((field) => row[field] !== null && (typeof row[field] !== 'number' || !Number.isSafeInteger(row[field]) || row[field] < 0)) ||
+    (row.liters !== null && (typeof row.liters !== 'string' || !/^\d{1,5}(?:\.\d{1,3})?$/.test(row.liters))) ||
     (row.phone !== null && (typeof row.phone !== 'string' || !row.phone.trim())) ||
     (row.receiptAt !== null && (typeof row.receiptAt !== 'string' || !Number.isFinite(Date.parse(row.receiptAt)))) ||
     !['pending', 'approved', 'rejected'].includes(row.status as string) ||
@@ -52,7 +54,7 @@ function parseReceipt(value: unknown): Receipt {
       throw new Error(RECEIPTS_LOAD_ERROR)
     }
   }
-  return Object.fromEntries([...texts, ...amounts, 'reviewVersion', 'settlementId', 'phone', 'receiptAt', 'status', 'rejectionReason', 'matchStatus', 'photos']
+  return Object.fromEntries([...texts, ...amounts, 'liters', 'reviewVersion', 'settlementId', 'phone', 'receiptAt', 'status', 'rejectionReason', 'matchStatus', 'photos']
     .map((field) => [field, row[field]])) as Receipt
 }
 
@@ -70,7 +72,8 @@ export async function reviewReceipt(receipt: Pick<Receipt, 'id' | 'reviewVersion
     result.status !== (action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : 'pending') ||
     (action === 'pending' && (result.finalAmount !== null || result.mileageAmount !== null || result.rejectionReason !== null)) ||
     (action === 'reject' && result.rejectionReason !== rejectionReason) ||
-    (action === 'approve' && (result.finalAmount !== approval?.finalAmount || result.mileageAmount === null))) throw new Error('심사 결과를 확인하지 못했습니다. 다시 시도해주세요.')
+    (action === 'approve' && (result.finalAmount !== approval?.finalAmount || result.mileageAmount === null ||
+      result.liters === null || Number(result.liters) !== Number(approval?.liters)))) throw new Error('심사 결과를 확인하지 못했습니다. 다시 시도해주세요.')
   return result
 }
 
