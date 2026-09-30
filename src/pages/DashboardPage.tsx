@@ -310,7 +310,7 @@ export function DashboardPage() {
     })
     return () => { current = false }
   }, [dateRange, selectedAffiliation, refresh])
-  const value = (key: 'accumulatedMileage' | 'settlementMileage' | 'matchedCount' | 'mismatchedCount') =>
+  const value = (key: 'accumulatedMileage' | 'settlementMileage' | 'approvedCount' | 'rejectedCount') =>
     dashboardView ? numberFormatter.format(dashboardView[key]) : '-'
 
   return (
@@ -332,15 +332,15 @@ export function DashboardPage() {
             value={value('settlementMileage')}
           />
           <SummaryCard
-            label="일치 영수 데이터"
+            label="승인 영수 데이터"
             unit="건"
-            value={value('matchedCount')}
+            value={value('approvedCount')}
           />
           <SummaryCard
-            label="미일치 영수 데이터"
+            label="반려 영수 데이터"
             linkHref="/receipts"
             unit="건"
-            value={value('mismatchedCount')}
+            value={value('rejectedCount')}
           />
         </div>
         <RecentReceiptCard receipts={dashboardView?.receipts ?? []} message={dashboardView ? undefined : loading ? '데이터를 불러오는 중입니다.' : ''} />

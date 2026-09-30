@@ -3,7 +3,7 @@ import type { DateRange } from './utils/dateRange'
 
 export type DashboardReceipt = { id: string; driverName: string; date: string; status: '적립' | '대기' | '반려'; mileage: number | null }
 export type DashboardData = {
-  accumulatedMileage: number; settlementMileage: number; matchedCount: number; mismatchedCount: number
+  accumulatedMileage: number; settlementMileage: number; approvedCount: number; rejectedCount: number
   receipts: DashboardReceipt[]
   chart: { date: string; common: number; affiliation: number }[]
   affiliations: { value: string; label: string }[]
@@ -32,7 +32,7 @@ export async function getDashboard(range: DateRange, companyId: string): Promise
   if (!Array.isArray(value.receipts) || value.receipts.length > 5 || !Array.isArray(value.chart) || !Array.isArray(value.affiliations)) throw new Error('Invalid dashboard lists')
   return {
     accumulatedMileage: amount(value.accumulatedMileage), settlementMileage: amount(value.settlementMileage),
-    matchedCount: amount(value.matchedCount), mismatchedCount: amount(value.mismatchedCount),
+    approvedCount: amount(value.approvedCount), rejectedCount: amount(value.rejectedCount),
     receipts: value.receipts.map((row: unknown) => {
       const r = record(row)
       const statuses = { approved: '적립', pending: '대기', rejected: '반려' } as const

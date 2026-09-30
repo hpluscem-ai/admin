@@ -11,7 +11,7 @@ function nodes(tree, name) {
   return [...((typeof tree.type==='function'?tree.type.name:tree.type)===name ? [tree] : []), ...[tree.props?.children].flat(Infinity).flatMap(child=>nodes(child,name))]
 }
 const company = { id:'a',businessName:'물류',businessNumber:'123',corporateRegistrationNumber:'456',businessAddress:'서울',managerName:'담당자',managerPhone:'01012345678',bankCode:'4',accountNumber:'00123',accountHolder:'예금주',active:true,mileage:3000,registeredMileage:3000,additionalUnpaidMileage:0,transferStatus:'pending' }
-const data={ accumulatedMileage:3000,settlementMileage:4000,matchedCount:2,mismatchedCount:1,receipts:[],chart:[{date:'2026-08-01',common:3000,affiliation:1000}],affiliations:[{value:'a',label:'동일 이름'},{value:'b',label:'동일 이름'}] }
+const data={ accumulatedMileage:3000,settlementMileage:4000,approvedCount:2,rejectedCount:1,receipts:[],chart:[{date:'2026-08-01',common:3000,affiliation:1000}],affiliations:[{value:'a',label:'동일 이름'},{value:'b',label:'동일 이름'}] }
 function mount(page='LogisticsSettlementPage') {
  const calls=[],slots=[],effects=[],downloads=[],window={location:{pathname:page==='DashboardPage'?'/dashboard':'/settlements'}};let index=0
  const imports={react:{
@@ -119,6 +119,8 @@ test('inactive historical settlement row preserves account and amount but has no
 test('dashboard sends dates/company IDs to the server and renders server sums without summing recent rows',async()=>{
  const h=mount('DashboardPage');await h.respond(0,200,data)
  assert.equal(nodes(h.render(),'SummaryCard')[0].props.value,'3,000');assert.equal(nodes(h.render(),'RecentReceiptCard')[0].props.receipts.length,0)
+ const cards=nodes(h.render(),'SummaryCard')
+ assert.deepEqual(cards.slice(2).map(card=>[card.props.label,card.props.value]),[['승인 영수 데이터','2'],['반려 영수 데이터','1']])
  const chart=nodes(h.render(),'MileageChart')[0];assert.deepEqual(chart.props.affiliations,data.affiliations);chart.props.onAffiliationChange('b');h.render()
  assert.match(h.calls[1].url,/logisticsCompanyId=b/);await h.respond(1,200,data);assert.equal(nodes(h.render(),'SummaryCard')[0].props.value,'3,000')
 })
@@ -127,7 +129,7 @@ test('dashboard ignores stale date/affiliation responses, including late expired
  await h.respond(1,200,data);await h.respond(0,401,{code:'INVALID_ADMIN_SESSION'});assert.equal(h.window.location.pathname,'/dashboard');assert.equal(nodes(h.render(),'SummaryCard')[0].props.value,'3,000')
 })
 test('dashboard zeroes require a valid success and failure leaves chart lines unavailable',async()=>{
- const h=mount('DashboardPage');await h.respond(0,200,{...data,accumulatedMileage:0,settlementMileage:0,matchedCount:0,mismatchedCount:0,chart:[]})
+ const h=mount('DashboardPage');await h.respond(0,200,{...data,accumulatedMileage:0,settlementMileage:0,approvedCount:0,rejectedCount:0,chart:[]})
  assert.equal(nodes(h.render(),'SummaryCard')[0].props.value,'0');assert.equal(nodes(h.render(),'MileageChart')[0].props.loaded,true)
  const bad=mount('DashboardPage');await bad.respond(0,200,{...data,accumulatedMileage:null});assert.equal(nodes(bad.render(),'SummaryCard')[0].props.value,'-');assert.equal(nodes(bad.render(),'MileageChart')[0].props.loaded,false);assert.match(nodes(bad.render(),'NoticeDialog')[0].props.message,/불러오지 못/);assert.equal(nodes(bad.render(),'RecentReceiptCard')[0].props.message,'')
 })
