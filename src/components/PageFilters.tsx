@@ -119,11 +119,9 @@ type AffiliationFilterProps = {
   value?: string
 }
 
-const defaultAffiliations = ['에이치플러스주유소', '하나에너지', '성북주유소'] as const
-
 export function AffiliationFilter({
   onChange,
-  options = defaultAffiliations,
+  options = [],
   value,
 }: AffiliationFilterProps = {}) {
   return (
