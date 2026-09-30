@@ -94,7 +94,9 @@ function RecentReceiptCard({ receipts, message }: RecentReceiptCardProps) {
       ) : recentReceipts.map((receipt) => (
         <div className="recent-card__row" key={receipt.id}>
           <div>
-            <p className="recent-card__mileage">{receipt.mileage === null ? '-' : `+${numberFormatter.format(receipt.mileage)}`}마일</p>
+            <p className="recent-card__mileage">{receipt.status === '적립'
+              ? receipt.mileage === null ? '-' : `+${numberFormatter.format(receipt.mileage)}`
+              : '0'}마일</p>
             <p className="recent-card__detail">
               {receipt.driverName} 기사님 · {formatDate(receipt.date)}
             </p>

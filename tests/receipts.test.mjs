@@ -12,7 +12,7 @@ const tick = () => new Promise((resolve) => setImmediate(resolve))
 const row = (id, company = 'company-a') => ({ id, userId: 'user-' + id, logisticsCompanyId: company,
   reviewVersion: 'a'.repeat(64), settlementId: null,
   logisticsCompanyName: '같은 회사명', name: '기사 ' + id, phone: '010-1234-5678', receiptAmount: null,
-  meterAmount: null, finalAmount: null, mileageAmount: null, receiptAt: null, status: 'pending',
+  meterAmount: null, finalAmount: null, liters: null, mileageAmount: null, receiptAt: null, status: 'pending',
   rejectionReason: null,
   matchStatus: 'pending', photos: { receipt: `/api/v1/admin/mileage/applications/${id}/photos/receipt`, meter: null } })
 function find(node, type, predicate = () => true) {
@@ -109,7 +109,7 @@ function mount() {
   return page
 }
 
-test('receipt data uses admin cookies and keeps unknown amounts and OCR states distinct from zero and mismatch', async () => {
+test('receipt data uses admin cookies and shows pending or rejected mileage as zero', async () => {
   const page = mount()
   assert.equal(page.calls.length, 1)
   assert.equal(page.calls[0].url, '/api/v1/admin/mileage/applications')
@@ -120,9 +120,11 @@ test('receipt data uses admin cookies and keeps unknown amounts and OCR states d
   const options = find(page.render(), 'AffiliationFilter').props.options
   assert.deepEqual(options, [{ value: 'company-a', label: '같은 회사명' }, { value: 'company-b', label: '같은 회사명' }])
   const columns = page.table().columns
-  for (const key of ['receiptAmount', 'meterAmount', 'finalAmount', 'mileage', 'receiptDate']) {
+  for (const key of ['receiptAmount', 'meterAmount', 'finalAmount', 'receiptDate']) {
     assert.equal(columns.find((column) => column.key === key).render(row('a')), '-')
   }
+  assert.equal(columns.find((column) => column.key === 'mileage').render(row('a')), '0')
+  assert.equal(columns.find((column) => column.key === 'mileage').render({ ...row('a'), status: 'rejected' }), '0')
   const match = columns.find((column) => column.key === 'match').render(row('a'))
   assert.equal(match.props.children, '-')
   assert.equal(match.props['data-match'], undefined)
@@ -299,7 +301,7 @@ test('approval sends confirmed amount and decimal liters, locks edits and update
   assert.equal(page.field('finalAmount').disabled, true)
   assert.equal(page.field('liters').disabled, true)
   assert.equal(page.table().rows[0].status, 'pending')
-  const approved = { ...row('a'), reviewVersion: 'b'.repeat(64), status: 'approved', finalAmount: 1234, mileageAmount: 103 }
+  const approved = { ...row('a'), reviewVersion: 'b'.repeat(64), status: 'approved', finalAmount: 1234, liters: '5.125', mileageAmount: 103 }
   await page.respond(1, 200, approved)
   assert.equal(page.modal(), undefined)
   await page.respond(2, 200, [approved])
@@ -311,7 +313,7 @@ test('approval sends confirmed amount and decimal liters, locks edits and update
 
 test('approved and rejected receipts can reverse using the latest version without optimistic changes', async () => {
   const page = mount()
-  const approved = { ...row('a'), status: 'approved', finalAmount: 1234, mileageAmount: 103 }
+  const approved = { ...row('a'), status: 'approved', finalAmount: 1234, liters: '5.125', mileageAmount: 103 }
   const rejected = { ...row('a'), reviewVersion: 'b'.repeat(64), status: 'rejected', rejectionReason: '금액 재확인' }
   await page.respond(0, 200, [approved])
   page.review(approved, '반려')
@@ -329,7 +331,7 @@ test('approved and rejected receipts can reverse using the latest version withou
   page.modal().onConfirm()
   assert.equal(page.table().rows[0].status, 'rejected')
   assert.equal(JSON.parse(page.calls[4].options.body).reviewVersion, rejected.reviewVersion)
-  const reapproved = { ...approved, reviewVersion: 'c'.repeat(64), finalAmount: 2000, mileageAmount: 200 }
+  const reapproved = { ...approved, reviewVersion: 'c'.repeat(64), finalAmount: 2000, liters: '10', mileageAmount: 200 }
   await page.respond(4, 200, reapproved)
   assert.equal(page.modal(), undefined)
   await page.respond(5, 200, [reapproved])
@@ -407,7 +409,7 @@ test('review completion refreshes the latest filter without inserting an old row
   page.change('SearchFilter', '기사 b')
   await page.respond(2, 200, [row('a'), row('b')])
   await page.respond(3, 200, [row('b')])
-  await page.respond(1, 200, { ...row('a'), status: 'approved', finalAmount: 10, mileageAmount: 20 })
+  await page.respond(1, 200, { ...row('a'), status: 'approved', finalAmount: 10, liters: '1', mileageAmount: 20 })
   page.render()
   assert.match(page.calls[5].url, /nameQuery=/)
   await page.respond(4, 200, [row('a'), row('b')])
@@ -435,7 +437,7 @@ test('approval validates both inputs before sending and retains entered values a
   assert.equal(page.field('liters').disabled, false)
   page.modal().onConfirm()
   assert.deepEqual(page.calls[2].options.body, page.calls[1].options.body)
-  await page.respond(2, 200, { ...row('a'), status: 'approved', finalAmount: 0, mileageAmount: 0 })
+  await page.respond(2, 200, { ...row('a'), status: 'approved', finalAmount: 0, liters: '0', mileageAmount: 0 })
   assert.equal(page.modal(), undefined)
   page.review(row('b'), '승인')
   assert.equal(page.field('finalAmount').value, '')
@@ -467,7 +469,7 @@ test('approval filters nonnumeric input, groups thousands and sends exact values
   assert.equal(page.field('liters').value, '1,234.125')
   page.modal().onConfirm()
   assert.equal(page.calls[2].options.body, page.calls[1].options.body)
-  await page.respond(2, 200, { ...row('a'), status: 'approved', finalAmount: 12345, mileageAmount: 24683 })
+  await page.respond(2, 200, { ...row('a'), status: 'approved', finalAmount: 12345, liters: '1234.125', mileageAmount: 24683 })
   assert.equal(page.modal(), undefined)
 })
 
