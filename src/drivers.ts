@@ -9,6 +9,8 @@ export type Driver = {
   phone: string
   email: string
   joinedAt: string
+  totalAmount: number
+  mileage: number
 }
 export const DRIVERS_LOAD_ERROR = '기사 데이터를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.'
 
@@ -28,7 +30,10 @@ export async function getDrivers(query?: DriverQuery): Promise<Driver[]> {
     const fields = ['id', 'logisticsCompanyId', 'logisticsCompanyName', 'name', 'phone', 'email', 'joinedAt'] as const
     if (fields.some((field) => typeof record[field] !== 'string' || !record[field].trim()) ||
       !Number.isFinite(Date.parse(record.joinedAt as string))) throw new Error(DRIVERS_LOAD_ERROR)
-    return Object.fromEntries(fields.map((field) => [field, record[field]])) as Driver
+    const { totalAmount, mileage } = record
+    if (typeof totalAmount !== 'number' || !Number.isSafeInteger(totalAmount) || totalAmount < 0 ||
+      typeof mileage !== 'number' || !Number.isSafeInteger(mileage) || mileage < 0) throw new Error(DRIVERS_LOAD_ERROR)
+    return { ...Object.fromEntries(fields.map((field) => [field, record[field]])), totalAmount, mileage } as Driver
   })
 }
 

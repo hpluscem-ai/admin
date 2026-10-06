@@ -7,8 +7,8 @@ export function Footer() {
       <img className="site-footer__logo" src={logo} alt="HAYAN100" />
       <hr className="site-footer__divider" />
       <div className="site-footer__information">
-        <p>이용약관</p>
-        <p className="site-footer__privacy">개인정보처리방침</p>
+        <a href="https://www.hayan100.kr/term" target="_blank" rel="noopener noreferrer">이용약관</a>
+        <a className="site-footer__privacy" href="https://www.hayan100.kr/privacy" target="_blank" rel="noopener noreferrer">개인정보처리방침</a>
         <div className="site-footer__customer-service">
           <p>고객센터</p>
           <p>전화번호 : 02-2037-7724</p>

@@ -25,8 +25,8 @@ function getColumns(
     { key: 'name', label: '이름', render: (row) => row.name },
     { key: 'phone', label: '연락처', render: (row) => row.phone },
     { key: 'email', label: '이메일', render: (row) => row.email },
-    { key: 'totalAmount', label: '최종 금액', render: () => '-' },
-    { key: 'mileage', label: '적립 마일리지', render: () => '-' },
+    { key: 'totalAmount', label: '최종 금액', render: (row) => row.totalAmount.toLocaleString('ko-KR') },
+    { key: 'mileage', label: '적립 마일리지', render: (row) => row.mileage.toLocaleString('ko-KR') },
     { key: 'joinedAt', label: '가입일자', render: (row) => formatDate(row.joinedAt) },
     {
       key: 'actions',

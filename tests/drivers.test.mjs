@@ -13,7 +13,7 @@ const jsx = (type, props) => ({ type, props })
 const tick = () => new Promise((resolve) => setImmediate(resolve))
 const driver = (id, companyId = 'company-a') => ({ id, logisticsCompanyId: companyId,
   logisticsCompanyName: '같은 회사명', name: `기사 ${id}`, phone: '010-1234-5678',
-  email: `${id}@example.test`, joinedAt: '2026-09-13T18:00:00Z' })
+  email: `${id}@example.test`, joinedAt: '2026-09-13T18:00:00Z', totalAmount: 0, mileage: 0 })
 function find(node, type) {
   if (!node || typeof node !== 'object') return undefined
   if (node.type === type) return node
@@ -85,7 +85,7 @@ test('all-driver affiliation discovery preserves equal names with distinct IDs; 
     { value: 'company-a', label: '같은 회사명' }, { value: 'company-b', label: '같은 회사명' },
   ])
   assert.deepEqual(page.table().rows, [driver('current')])
-  for (const key of ['mileage', 'totalAmount']) assert.equal(page.table().columns.find((column) => column.key === key).render(driver('current')), '-')
+  for (const key of ['mileage', 'totalAmount']) assert.equal(page.table().columns.find((column) => column.key === key).render(driver('current')), '0')
   const date = new Date(driver('current').joinedAt)
   assert.equal(page.table().columns.find((column) => column.key === 'joinedAt').render(driver('current')),
     `${date.getFullYear()}. ${String(date.getMonth() + 1).padStart(2, '0')}. ${String(date.getDate()).padStart(2, '0')}`)
@@ -314,4 +314,27 @@ test('affiliation discovery failure keeps successful driver rows and retries dis
  assert.equal(page.calls[2].url,'/api/v1/admin/drivers')
  await page.respond(2,200,[driver('a')]);assert.equal(page.calls.length,3)
  assert.equal(find(page.render(),'AffiliationFilter').props.options.length,1)
+})
+
+test('driver totals use validated server lifetime values and thousands separators', async () => {
+  const page = mount()
+  const current = { ...driver('current'), totalAmount: 15000, mileage: 12300 }
+  await page.respond(0, 200, [current])
+  await page.respond(1, 200, [current])
+  assert.deepEqual(page.table().rows, [current])
+  for (const [key, expected] of [['totalAmount', '15,000'], ['mileage', '12,300']]) {
+    assert.equal(page.table().columns.find(column => column.key === key).render(current), expected)
+  }
+})
+
+test('missing or invalid totals fail without replacing the last successful driver rows with zero', async () => {
+  for (const field of ['totalAmount', 'mileage']) {
+    for (const value of [undefined, null, '1000', -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+      const page = await loadedPage()
+      page.change('SearchFilter', 'invalid')
+      await page.respond(2, 200, [{ ...driver('a'), [field]: value }])
+      assert.deepEqual(page.table().rows, [driver('a'), driver('b')])
+      assert.match(find(page.render(), 'NoticeDialog')?.props.message ?? '', /불러오지 못했습니다/)
+    }
+  }
 })

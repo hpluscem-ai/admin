@@ -93,6 +93,8 @@ function mount() {
     },
     status(receipt) {
       const node = page.table().columns.find(column => column.key === 'status').render(receipt)
+      const select = find(node, imports['../components/StatusSelect'].StatusSelect)
+      if (select) return select.type(select.props)
       return typeof node.type === 'function' ? node.type(node.props) : node
     },
     review(receipt, action) {
@@ -130,6 +132,79 @@ test('receipt data uses admin cookies and shows pending or rejected mileage as z
   assert.equal(match.props['data-match'], undefined)
   assert.equal(columns.find((column) => column.key === 'mileage').render({ ...row('a'), mileageAmount: 0 }), '0')
   assert.equal(columns.find((column) => column.key === 'finalAmount').render({ ...row('a'), finalAmount: 12345 }), '12,345')
+})
+
+test('OCR failure and duplicate suspicion display zero without changing other match results', () => {
+  const page = mount()
+  const column = page.table().columns.find(column => column.key === 'match')
+  for (const [matchStatus, expected, dataMatch] of [
+    ['pending', '-', undefined], ['matched', '일치', true], ['mismatched', '불일치', false],
+    ['ocr_failed', '0', undefined], ['duplicate_suspected', '0', undefined],
+  ]) {
+    const result = column.render({ ...row('a'), matchStatus })
+    assert.equal(result.props.children, expected)
+    assert.equal(result.props['data-match'], dataMatch)
+  }
+})
+
+function reasonButton(page, receipt) {
+  return find(page.table().columns.find(column => column.key === 'status').render(receipt),
+    'button', node => node.props.children === '사유 보기')
+}
+
+test('existing rejection reason is read without submitting a review, including settlement-attached rows', async () => {
+  const page = mount()
+  const rejected = { ...row('a'), status: 'rejected', rejectionReason: '사진 금액 확인\n다시 등록해주세요.' }
+  const other = { ...row('b'), status: 'rejected', rejectionReason: '다른 사유' }
+  await page.respond(0, 200, [rejected, other])
+  for (const receipt of [rejected, { ...rejected, settlementId: 'settled' }, other]) {
+    const button = reasonButton(page, receipt)
+    assert.ok(button, 'rejected rows expose the saved reason')
+    button.props.onClick()
+    const dialog = find(page.render(), 'NoticeDialog')
+    assert.equal(dialog.props.message, receipt.rejectionReason)
+    assert.equal(dialog.props.onRetry, undefined)
+    assert.equal(page.modal(), undefined)
+    assert.equal(page.calls.length, 1)
+    dialog.props.onClose()
+    assert.equal(find(page.render(), 'NoticeDialog'), undefined)
+  }
+  for (const receipt of [row('a'), { ...rejected, status: 'approved' },
+    { ...rejected, rejectionReason: null }, { ...rejected, rejectionReason: ' \n ' }]) {
+    assert.equal(reasonButton(page, receipt), undefined)
+  }
+})
+
+test('reason viewing and review dialogs stay exclusive, and query changes discard the old reason', async () => {
+  const page = mount()
+  const rejected = { ...row('a'), status: 'rejected', rejectionReason: '저장된 사유' }
+  await page.respond(0, 200, [rejected])
+  reasonButton(page, rejected)?.props.onClick()
+  assert.equal(page.review(rejected, '승인'), false)
+  page.change('SearchFilter', 'new')
+  assert.equal(find(page.render(), 'NoticeDialog'), undefined)
+  await page.respond(1, 200, [rejected])
+  await page.respond(2, 200, [rejected])
+  assert.equal(find(page.render(), 'NoticeDialog'), undefined)
+  assert.equal(page.review(rejected, '승인'), true)
+  assert.equal(reasonButton(page, rejected)?.props.disabled, true)
+  page.modal().onCancel()
+  reasonButton(page, rejected)?.props.onClick()
+  assert.equal(find(page.render(), 'NoticeDialog')?.props.message, rejected.rejectionReason)
+})
+
+test('a pending refresh replaces the old reason when the receipt is no longer rejected', async () => {
+  const page = mount()
+  const rejected = { ...row('a'), status: 'rejected', rejectionReason: '변경 전 사유' }
+  await page.respond(0, 200, [rejected])
+  page.change('SearchFilter', '기사')
+  reasonButton(page, rejected).props.onClick()
+  assert.equal(find(page.render(), 'NoticeDialog').props.message, rejected.rejectionReason)
+  const approved = { ...rejected, status: 'approved', rejectionReason: null, finalAmount: 10000, mileageAmount: 200 }
+  await page.respond(1, 200, [approved])
+  await page.respond(2, 200, [approved])
+  assert.deepEqual(page.table().rows, [approved])
+  assert.equal(find(page.render(), 'NoticeDialog'), undefined)
 })
 
 test('filters send encoded names and company IDs while stale results cannot replace the latest query', async () => {

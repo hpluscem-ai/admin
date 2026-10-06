@@ -283,6 +283,13 @@
   cursor: pointer;
 }
 
+.receipt-review-status {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
 .match-result[data-match='false'],
 .approval-status[data-status='반려'] {
   color: var(--color-danger);
@@ -1042,6 +1049,11 @@
 
 .site-footer__privacy {
   font-weight: 700;
+}
+
+.site-footer__information a {
+  color: inherit;
+  text-decoration: none;
 }
 
 .site-footer__company {

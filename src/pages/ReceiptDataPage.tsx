@@ -50,7 +50,8 @@ function receiptDate(value: string | null) {
 type PhotoTarget = { path: string | null; label: string }
 type ReviewTarget = { receipt: Receipt; action: 'approve' | 'reject' | 'pending' }
 
-function getColumns(onPhoto: (target: PhotoTarget) => void, onReview: (target: ReviewTarget) => void, reviewDisabled: boolean): readonly DataTableColumn<Receipt>[] {
+function getColumns(onPhoto: (target: PhotoTarget) => void, onReview: (target: ReviewTarget) => void,
+  onReason: (reason: string) => void, reviewDisabled: boolean): readonly DataTableColumn<Receipt>[] {
   const photoButton = (row: Receipt, kind: 'receipt' | 'meter') => <button className="text-button" type="button"
     aria-label={`${row.name} ${kind === 'receipt' ? '영수증' : '계기판'} 사진 보기`}
     onClick={() => onPhoto({ path: row.photos[kind], label: `${row.name} ${kind === 'receipt' ? '영수증' : '계기판'} 사진` })}>보기</button>
@@ -62,15 +63,20 @@ function getColumns(onPhoto: (target: PhotoTarget) => void, onReview: (target: R
     { key: 'receiptAmount', label: '영수증 금액', render: (row) => amount(row.receiptAmount) },
     { key: 'meterPhoto', label: '계기판 사진', render: (row) => photoButton(row, 'meter') },
     { key: 'meterAmount', label: '계기판 금액', render: (row) => amount(row.meterAmount) },
-    { key: 'match', label: '일치여부', render: (row) => <span className="match-result" data-match={row.matchStatus === 'matched' ? true : row.matchStatus === 'mismatched' ? false : undefined}>{row.matchStatus === 'matched' ? '일치' : row.matchStatus === 'mismatched' ? '불일치' : '-'}</span> },
+    { key: 'match', label: '일치여부', render: (row) => <span className="match-result" data-match={row.matchStatus === 'matched' ? true : row.matchStatus === 'mismatched' ? false : undefined}>{row.matchStatus === 'matched' ? '일치' : row.matchStatus === 'mismatched' ? '불일치' : row.matchStatus === 'ocr_failed' || row.matchStatus === 'duplicate_suspected' ? '0' : '-'}</span> },
     { key: 'finalAmount', label: '최종 금액', render: (row) => amount(row.finalAmount) },
     { key: 'liters', label: '주유량(L)', render: (row) => row.liters ?? '-' },
     { key: 'mileage', label: '적립 마일리지', render: (row) => row.status === 'approved' ? amount(row.mileageAmount) : '0' },
     { key: 'receiptDate', label: '영수일시', render: (row) => receiptDate(row.receiptAt) },
-    { key: 'status', label: '승인여부', render: (row) => row.settlementId === null
-      ? <StatusSelect label={row.name} status={statusNames[row.status]} disabled={reviewDisabled}
-        onChange={(status) => onReview({ receipt: row, action: status === '승인' ? 'approve' : status === '반려' ? 'reject' : 'pending' })} />
-      : <ApprovalStatusDisplay name={row.name} status={row.status} /> },
+    { key: 'status', label: '승인여부', render: (row) => <span className="receipt-review-status">
+      {row.settlementId === null
+        ? <StatusSelect label={row.name} status={statusNames[row.status]} disabled={reviewDisabled}
+          onChange={(status) => onReview({ receipt: row, action: status === '승인' ? 'approve' : status === '반려' ? 'reject' : 'pending' })} />
+        : <ApprovalStatusDisplay name={row.name} status={row.status} />}
+      {row.status === 'rejected' && row.rejectionReason?.trim() && <button className="text-button"
+        type="button" disabled={reviewDisabled} aria-label={`${row.name} 반려 사유 보기`}
+        onClick={() => onReason(row.rejectionReason!)}>사유 보기</button>}
+    </span> },
   ]
 }
 
@@ -82,6 +88,7 @@ export function ReceiptDataPage() {
   const [loadError, setLoadError] = useState('')
   const [loadState, setLoadState] = useState<'loading' | 'loaded' | 'failed'>('loading')
   const [photo, setPhoto] = useState<PhotoTarget | null>(null)
+  const [reasonToView, setReasonToView] = useState('')
   const [review, setReview] = useState<ReviewTarget | null>(null)
   const [reviewError, setReviewError] = useState('')
   const [reviewConflict, setReviewConflict] = useState(false)
@@ -112,6 +119,7 @@ export function ReceiptDataPage() {
     const generation = ++queryGeneration.current
     setLoadState('loading')
     setLoadError('')
+    setReasonToView('')
     const all = getReceipts()
     const filtered = query.trim() || affiliation
       ? getReceipts({ nameQuery: query, logisticsCompanyId: affiliation }) : all
@@ -120,6 +128,7 @@ export function ReceiptDataPage() {
       setAffiliations([...new Map(allRows.map((row) => [row.logisticsCompanyId,
         { value: row.logisticsCompanyId, label: row.logisticsCompanyName }])).values()])
       setRows(matchingRows)
+      setReasonToView('')
       setLoadState('loaded')
     }).catch((error: unknown) => {
       if (!active || generation !== queryGeneration.current) return
@@ -203,16 +212,21 @@ export function ReceiptDataPage() {
         <SearchFilter onChange={setQuery} value={query} />
         <AffiliationFilter onChange={setAffiliation} value={affiliation} options={affiliations ?? []} />
       </DataPageHeader>
-      <DataTable columns={getColumns(setPhoto, (target) => {
-        if (submitting.current) return
+      <DataTable columns={getColumns((target) => {
+        if (!review && !reasonToView) setPhoto(target)
+      }, (target) => {
+        if (submitting.current || photo || reasonToView) return
         setApprovalValues({ finalAmount: '', liters: '' })
         setRejectionReason('')
         modalOwner.current = target; setReviewError(''); setReviewConflict(false); setReview(target)
-      }, review !== null || reviewSubmitting)} rows={rows ?? []} getRowKey={(row) => row.id}
+      }, (reason) => {
+        if (!review && !photo && !submitting.current) setReasonToView(reason)
+      }, review !== null || reviewSubmitting || photo !== null || !!reasonToView)} rows={rows ?? []} getRowKey={(row) => row.id}
         emptyMessage={loadState === 'failed' ? undefined : loadState === 'loading' ? '영수 데이터를 불러오는 중입니다.' : '조회 조건에 맞는 영수 데이터가 없습니다.'} />
-      {!review && !photo && loadError && <NoticeDialog message={loadError}
+      {!review && !photo && !reasonToView && loadError && <NoticeDialog message={loadError}
         onClose={() => setLoadError('')} onRetry={() => setRefresh(current => current + 1)} />}
       {photo && <ReceiptPhotoDialog target={photo} onClose={() => setPhoto(null)} />}
+      {reasonToView && <NoticeDialog message={reasonToView} onClose={() => setReasonToView('')} />}
       {review && <ConfirmationDialog
         title={review.action === 'pending' ? '대기 상태로 변경하시겠습니까?' : `${reviewNames[review.action]}하시겠습니까?`}
         description={reviewError || (review.action === 'pending' ? '선택한 신청을 대기 상태로 변경합니다.' : `선택한 신청을 ${reviewNames[review.action]}합니다.`)}
