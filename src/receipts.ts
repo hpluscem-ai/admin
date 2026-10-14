@@ -16,6 +16,7 @@ export type Receipt = {
   mileageAmount: number | null
   receiptAt: string | null
   matchStatus: 'pending' | 'matched' | 'mismatched' | 'ocr_failed' | 'duplicate_suspected'
+  ocrErrorCode: string | null
   status: 'pending' | 'approved' | 'rejected'
   rejectionReason: string | null
   photos: { receipt: string | null; meter: string | null }
@@ -46,6 +47,7 @@ function parseReceipt(value: unknown): Receipt {
     (row.receiptAt !== null && (typeof row.receiptAt !== 'string' || !Number.isFinite(Date.parse(row.receiptAt)))) ||
     !['pending', 'approved', 'rejected'].includes(row.status as string) ||
     (row.rejectionReason !== null && typeof row.rejectionReason !== 'string') ||
+    (row.ocrErrorCode != null && (typeof row.ocrErrorCode !== 'string' || !/^[A-Z][A-Z0-9_]*$/.test(row.ocrErrorCode))) ||
     !['pending', 'matched', 'mismatched', 'ocr_failed', 'duplicate_suspected'].includes(row.matchStatus as string) ||
     typeof row.photos !== 'object' || row.photos === null || Array.isArray(row.photos)) throw new Error(RECEIPTS_LOAD_ERROR)
   const photos = row.photos as Record<string, unknown>
@@ -54,8 +56,11 @@ function parseReceipt(value: unknown): Receipt {
       throw new Error(RECEIPTS_LOAD_ERROR)
     }
   }
-  return Object.fromEntries([...texts, ...amounts, 'liters', 'reviewVersion', 'settlementId', 'phone', 'receiptAt', 'status', 'rejectionReason', 'matchStatus', 'photos']
-    .map((field) => [field, row[field]])) as Receipt
+  return {
+    ...Object.fromEntries([...texts, ...amounts, 'liters', 'reviewVersion', 'settlementId', 'phone', 'receiptAt', 'status', 'rejectionReason', 'matchStatus', 'photos']
+      .map((field) => [field, row[field]])),
+    ocrErrorCode: row.ocrErrorCode ?? null,
+  } as Receipt
 }
 
 export async function reviewReceipt(receipt: Pick<Receipt, 'id' | 'reviewVersion'>, action: 'approve' | 'reject' | 'pending',

@@ -13,7 +13,7 @@ const row = (id, company = 'company-a') => ({ id, userId: 'user-' + id, logistic
   reviewVersion: 'a'.repeat(64), settlementId: null,
   logisticsCompanyName: '같은 회사명', name: '기사 ' + id, phone: '010-1234-5678', receiptAmount: null,
   meterAmount: null, finalAmount: null, liters: null, mileageAmount: null, receiptAt: null, status: 'pending',
-  rejectionReason: null,
+  rejectionReason: null, ocrErrorCode: null,
   matchStatus: 'pending', photos: { receipt: `/api/v1/admin/mileage/applications/${id}/photos/receipt`, meter: null } })
 function find(node, type, predicate = () => true) {
   if (!node || typeof node !== 'object') return undefined
@@ -141,7 +141,7 @@ test('OCR failure and duplicate suspicion display zero without changing other ma
     ['pending', '-', undefined], ['matched', '일치', true], ['mismatched', '불일치', false],
     ['ocr_failed', '0', undefined], ['duplicate_suspected', '0', undefined],
   ]) {
-    const result = column.render({ ...row('a'), matchStatus })
+    const result = find(column.render({ ...row('a'), matchStatus }), 'span', node => node.props.className === 'match-result')
     assert.equal(result.props.children, expected)
     assert.equal(result.props['data-match'], dataMatch)
   }
@@ -151,6 +151,53 @@ function reasonButton(page, receipt) {
   return find(page.table().columns.find(column => column.key === 'status').render(receipt),
     'button', node => node.props.children === '사유 보기')
 }
+
+function ocrReasonButton(page, receipt) {
+  return find(page.table().columns.find(column => column.key === 'match').render(receipt),
+    'button', node => node.props.children === 'OCR 사유 보기')
+}
+
+test('OCR reasons use the existing notice without requests and preserve unknown codes', async () => {
+  const page = mount()
+  const failed = { ...row('a'), matchStatus: 'ocr_failed', ocrErrorCode: 'LUNA_HTTP' }
+  await page.respond(0, 200, [failed])
+  for (const receipt of [failed, { ...failed, ocrErrorCode: null }]) {
+    ocrReasonButton(page, receipt).props.onClick()
+    const dialog = find(page.render(), 'NoticeDialog')
+    assert.ok(dialog)
+    const text = dialog.props.message.props.children.filter(child => typeof child === 'string').join('')
+    assert.match(text, new RegExp(receipt.ocrErrorCode ?? '기록 없음'))
+    assert.match(text, /상세 HTTP 원인: 기존 기록 없음/)
+    assert.ok(find(dialog.props.message, 'br'))
+    assert.equal(page.calls.length, 1)
+    assert.equal(page.modal(), undefined)
+    assert.equal(ocrReasonButton(page, failed).props.disabled, true)
+    dialog.props.onClose()
+    assert.equal(find(page.render(), 'NoticeDialog'), undefined)
+  }
+  for (const matchStatus of ['pending', 'matched', 'mismatched', 'duplicate_suspected']) {
+    assert.equal(ocrReasonButton(page, { ...failed, matchStatus }), undefined)
+  }
+  ocrReasonButton(page, failed).props.onClick()
+  page.change('SearchFilter', '다른 기사')
+  assert.equal(find(page.render(), 'NoticeDialog'), undefined)
+})
+
+test('OCR error codes are validated and absent fields remain compatible with older servers', async () => {
+  for (const code of ['LUNA_HTTP', null, undefined]) {
+    const page = mount()
+    const operation = page.api.getReceipts()
+    await page.respond(1, 200, [{ ...row('a'), ocrErrorCode: code }])
+    assert.equal((await operation)[0].ocrErrorCode, code ?? null)
+  }
+  for (const code of [12, {}, '', 'HTTP error with raw response']) {
+    const page = mount()
+    const operation = page.api.getReceipts()
+    const rejected = assert.rejects(operation)
+    await page.respond(1, 200, [{ ...row('a'), ocrErrorCode: code }])
+    await rejected
+  }
+})
 
 test('existing rejection reason is read without submitting a review, including settlement-attached rows', async () => {
   const page = mount()

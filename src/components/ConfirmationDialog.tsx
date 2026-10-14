@@ -61,7 +61,7 @@ export function ConfirmationDialog({
 }
 
 export function NoticeDialog({ message, onClose, onRetry }: {
-  message: string
+  message: ReactNode
   onClose: () => void
   onRetry?: () => void
 }) {
