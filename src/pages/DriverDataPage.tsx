@@ -141,7 +141,13 @@ export function DriverDataPage() {
 
   return (
     <section className="data-page driver-data-page" aria-labelledby="driver-data-title">
-      <DataPageHeader title="소속 기사 데이터 목록" titleId="driver-data-title">
+      <DataPageHeader title="소속 기사 데이터 목록" titleId="driver-data-title"
+        onExport={async () => [
+          ['소속', '이름', '연락처', '이메일', '최종 금액', '적립 마일리지', '가입일자'],
+          ...(await getDrivers()).map(row => [row.logisticsCompanyName, row.name, row.phone, row.email,
+            row.totalAmount.toLocaleString('ko-KR'), row.mileage.toLocaleString('ko-KR'), formatDate(row.joinedAt)]),
+        ]}
+        onExportError={error => { if (isInvalidAdminSession(error)) navigate('/login'); else setLoadError(DRIVERS_LOAD_ERROR) }}>
         <DateRangeFilter {...dateRange} onChange={setDateRange} />
         <SearchFilter
           label="기사 이름 검색"

@@ -114,25 +114,29 @@ export function DateRangeFilter({ start, end, onChange }: DateRangeFilterProps) 
 }
 
 type AffiliationFilterProps = {
+  label?: string
+  placeholder?: string
   onChange?: (affiliation: string) => void
   options?: readonly (string | { value: string; label: string })[]
   value?: string
 }
 
 export function AffiliationFilter({
+  label = '소속 선택',
+  placeholder = '소속을 선택해주세요.',
   onChange,
   options = [],
   value,
 }: AffiliationFilterProps = {}) {
   return (
     <label className="filter-control filter-control--select">
-      <span className="sr-only">소속 선택</span>
+      <span className="sr-only">{label}</span>
       <select
         className="filter-control__select"
         {...(value === undefined ? { defaultValue: '' } : { value })}
         onChange={(event) => onChange?.(event.target.value)}
       >
-        <option value="">소속을 선택해주세요.</option>
+        <option value="">{placeholder}</option>
         {options.map((option) => (
           <option key={typeof option === 'string' ? option : option.value} value={typeof option === 'string' ? option : option.value}>
             {typeof option === 'string' ? option : option.label}

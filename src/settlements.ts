@@ -7,16 +7,29 @@ export type SettlementCompany = LogisticsCompany & { active: boolean; mileage: n
 export async function getSettlements(month: string): Promise<SettlementCompany[]> {
   const data = await requestAdmin(`settlements?${new URLSearchParams({ month })}`)
   if (!Array.isArray(data)) throw new Error('Invalid settlement response')
+  return data.map(readSettlement)
+}
+
+function readSettlement(row: unknown): SettlementCompany {
+  if (!row || typeof row !== 'object') throw new Error('Invalid settlement response')
+  const value = row as Record<string, unknown>
+  const fields = ['id', 'businessName', 'businessNumber', 'corporateRegistrationNumber', 'businessAddress', 'managerName', 'managerPhone', 'bankCode', 'accountNumber', 'accountHolder']
+  if (fields.some(field => typeof value[field] !== 'string' || !value[field]) || typeof value.active !== 'boolean' ||
+    [value.mileage, value.registeredMileage, value.additionalUnpaidMileage].some(amount => !Number.isSafeInteger(amount) || (amount as number) < 0) ||
+    ![null, 'pending', 'completed'].includes(value.transferStatus as string | null)) throw new Error('Invalid settlement response')
+  const bank = bankCodeOptions.find(({ code }) => code === value.bankCode)?.name
+  if (!bank) throw new Error('Invalid settlement bank')
+  return { ...value, bank } as SettlementCompany
+}
+
+export async function getAllSettlements(): Promise<(SettlementCompany & { month: string })[]> {
+  const data = await requestAdmin('settlements/all')
+  if (!Array.isArray(data)) throw new Error('Invalid settlement response')
   return data.map((row: unknown) => {
-    if (!row || typeof row !== 'object') throw new Error('Invalid settlement response')
-    const value = row as Record<string, unknown>
-    const fields = ['id', 'businessName', 'businessNumber', 'corporateRegistrationNumber', 'businessAddress', 'managerName', 'managerPhone', 'bankCode', 'accountNumber', 'accountHolder']
-    if (fields.some(field => typeof value[field] !== 'string' || !value[field]) || typeof value.active !== 'boolean' ||
-      [value.mileage, value.registeredMileage, value.additionalUnpaidMileage].some(amount => !Number.isSafeInteger(amount) || (amount as number) < 0) ||
-      ![null, 'pending', 'completed'].includes(value.transferStatus as string | null)) throw new Error('Invalid settlement response')
-    const bank = bankCodeOptions.find(({ code }) => code === value.bankCode)?.name
-    if (!bank) throw new Error('Invalid settlement bank')
-    return { ...value, bank } as SettlementCompany
+    const company = readSettlement(row)
+    const month = (row as Record<string, unknown>).month
+    if (typeof month !== 'string' || !/^[1-9]\d{3}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('Invalid settlement month')
+    return { ...company, month }
   })
 }
 

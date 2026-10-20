@@ -400,6 +400,11 @@
   height: 20px;
 }
 
+.data-view__export {
+  position: static;
+  flex-shrink: 0;
+}
+
 .settlement-floating-actions {
   position: fixed;
   right: 20px;

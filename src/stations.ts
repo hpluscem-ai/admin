@@ -58,10 +58,10 @@ export function getStationValues(station: Station): InfrastructureValues {
   }
 }
 
-export async function getStations(dateRange: DateRange, stationQuery: string): Promise<Station[]> {
-  const params = getDateRangeParams(dateRange)
+export async function getStations(dateRange?: DateRange, stationQuery = ''): Promise<Station[]> {
+  const params = dateRange ? getDateRangeParams(dateRange) : new URLSearchParams()
   if (stationQuery.trim()) params.set('stationQuery', stationQuery.trim())
-  const data = await requestAdmin(`stations?${params}`)
+  const data = await requestAdmin(`stations${params.size ? `?${params}` : ''}`)
   if (!Array.isArray(data)) throw new Error(STATIONS_LOAD_ERROR)
   return data.map(readStation)
 }

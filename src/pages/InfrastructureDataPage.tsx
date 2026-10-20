@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ConfirmationDialog, NoticeDialog } from '../components/ConfirmationDialog'
 import { DataPageHeader } from '../components/DataPageHeader'
 import { DataTable, type DataTableColumn } from '../components/DataTable'
-import { DateRangeFilter, SearchFilter } from '../components/PageFilters'
+import { AffiliationFilter, DateRangeFilter, SearchFilter } from '../components/PageFilters'
 import { AdminApiError, isInvalidAdminSession } from '../adminAuth'
 import { getStations, getStationValues, deleteInfrastructureRow, STATIONS_LOAD_ERROR, type Station } from '../stations'
 import { getDefaultDateRange } from '../utils/dateRange'
@@ -16,6 +16,18 @@ function formatDate(value: string) {
 
 type InfrastructureData = ReturnType<typeof getStationValues> & {
   id: string; rowId: string; deviceId: string | null; deviceCount: number; registeredAt: string
+}
+
+function getRows(stations: readonly Station[]): InfrastructureData[] {
+  return stations.flatMap((station) => {
+    const values = getStationValues(station)
+    return (station.devices.length ? station.devices : [null]).map((device) => ({
+      ...values, id: station.id, rowId: device ? `${station.id}:${device.id}` : station.id,
+      deviceId: device?.id ?? null, deviceCount: station.devices.length,
+      registeredAt: station.createdAt, model: device?.model ?? '',
+      capacity: device ? `${device.capacityLiters.toLocaleString('ko-KR')}L` : '',
+    }))
+  })
 }
 
 function getColumns(
@@ -72,6 +84,10 @@ export function InfrastructureDataPage() {
   const [stationQuery, setStationQuery] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<InfrastructureData | null>(null)
   const [refresh, setRefresh] = useState(0)
+  const [poles, setPoles] = useState<string[]>([])
+  const [pole, setPole] = useState('')
+  const [poleError, setPoleError] = useState('')
+  const [poleRefresh, setPoleRefresh] = useState(0)
   const lifetime = useRef<object | null>(null)
   const modalOwner = useRef<object | null>(null)
   const submitting = useRef(false)
@@ -80,6 +96,18 @@ export function InfrastructureDataPage() {
     lifetime.current = {}
     return () => { lifetime.current = null }
   }, [])
+  useEffect(() => {
+    let active = true
+    setPoleError('')
+    void getStations().then(all => {
+      if (active) setPoles([...new Set(all.map(station => station.pole))])
+    }).catch((error: unknown) => {
+      if (!active) return
+      if (isInvalidAdminSession(error)) navigate('/login')
+      else setPoleError(STATIONS_LOAD_ERROR)
+    })
+    return () => { active = false }
+  }, [poleRefresh, refresh])
   useEffect(() => {
     let active = true
     const generation = ++queryGeneration.current
@@ -96,16 +124,7 @@ export function InfrastructureDataPage() {
     })
     return () => { active = false }
   }, [dateRange, stationQuery, refresh])
-  const rows = (stations ?? []).flatMap((station) => {
-    const values = getStationValues(station)
-    return (station.devices.length ? station.devices : [null]).map((device) => ({
-      ...values, id: station.id, rowId: device ? `${station.id}:${device.id}` : station.id,
-      deviceId: device?.id ?? null, deviceCount: station.devices.length,
-      registeredAt: station.createdAt,
-      model: device?.model ?? '',
-      capacity: device ? `${device.capacityLiters.toLocaleString('ko-KR')}L` : '',
-    }))
-  })
+  const rows = getRows((stations ?? []).filter(station => !pole || station.pole === pole))
 
   async function handleDelete() {
     if (!deleteTarget || submitting.current || !lifetime.current) return
@@ -165,7 +184,13 @@ export function InfrastructureDataPage() {
 
   return (
     <section className="data-page infrastructure-data-page" aria-labelledby="infrastructure-data-title">
-      <DataPageHeader title="인프라 데이터 목록" titleId="infrastructure-data-title">
+      <DataPageHeader title="인프라 데이터 목록" titleId="infrastructure-data-title"
+        onExport={async () => [
+          ['주유소 이름', 'Pole', '모델명', '용량', '주소', '비고', '위도', '경도', '등록일자'],
+          ...getRows(await getStations()).map(row => [row.station, row.pole, row.model || '-', row.capacity || '-',
+            row.address, row.note || '-', row.latitude || '-', row.longitude || '-', formatDate(row.registeredAt)]),
+        ]}
+        onExportError={error => { if (isInvalidAdminSession(error)) navigate('/login'); else setLoadError(STATIONS_LOAD_ERROR) }}>
         <DateRangeFilter {...dateRange} onChange={setDateRange} />
         <SearchFilter
           label="주유소 이름 검색"
@@ -173,6 +198,8 @@ export function InfrastructureDataPage() {
           placeholder="주유소 이름으로 검색해주세요."
           value={stationQuery}
         />
+        <AffiliationFilter label="Pole 선택" placeholder="Pole 전체" options={poles}
+          value={pole} onChange={setPole} />
       </DataPageHeader>
       <DataTable
         columns={getColumns((row) => { modalOwner.current = {}; setDeleteError(''); setDeleteTarget(row) })}
@@ -180,8 +207,11 @@ export function InfrastructureDataPage() {
         rows={rows}
         getRowKey={(row) => row.rowId}
       />
-      {!deleteTarget && loadError && <NoticeDialog message={loadError}
-        onClose={() => setLoadError('')} onRetry={() => setRefresh(current => current + 1)} />}
+      {!deleteTarget && (loadError || poleError) && <NoticeDialog message={loadError || poleError}
+        onClose={() => { setLoadError(''); setPoleError('') }} onRetry={() => {
+          if (loadError) setRefresh(current => current + 1)
+          if (poleError) setPoleRefresh(current => current + 1)
+        }} />}
       <a className="floating-action" href="/infrastructure/new">
         <img src={packageIcon} alt="" />
         인프라 데이터 추가

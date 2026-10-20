@@ -11,7 +11,7 @@ const sources = Object.fromEntries(['adminAuth.ts', 'logisticsCompanies.ts', 'se
 const company = (id, businessName = id) => ({ id, businessName, businessNumber: '123-45-67890',
   corporateRegistrationNumber: '123456-1234567', businessAddress: '서울시', managerName: '담당자',
   managerPhone: '01012345678', bankCode: '4', accountNumber: '1234567890', accountHolder: '예금주',
-  active: true, mileage: 0, transferStatus: null, createdAt: '2020-01-01T00:00:00Z', updatedAt: '2020-01-01T00:00:00Z' })
+  active: true, mileage: 0, registeredMileage: 0, additionalUnpaidMileage: 0, transferStatus: null, createdAt: '2020-01-01T00:00:00Z', updatedAt: '2020-01-01T00:00:00Z' })
 const tick = () => new Promise((resolve) => setImmediate(resolve))
 const jsx = (type, props) => ({ type, props })
 function find(node, type) {
@@ -96,7 +96,7 @@ test('real settlement list fields, bank names and zero mileage replace samples',
   assert.equal(table.rows[0].bank, 'KB국민은행')
   assert.equal(table.getRowKey(table.rows[0]), 'a')
   assert.equal(table.columns.find(column => column.key === 'mileage').render(table.rows[0]), '0')
-  assert.equal(table.columns.find(column => column.key === 'transferStatus').render(table.rows[0]), '-')
+  assert.equal(table.columns.find(column => column.key === 'transferStatus').render(table.rows[0]).props.children[0], '-')
   assert.equal(find(table.columns.find((column) => column.key === 'actions').render(table.rows[0]), 'a').props.href, '/settlements/edit/a')
   find(page.render(), 'SearchFilter').props.onChange(' ALPHA ')
   assert.deepEqual(find(page.render(), 'DataTable').props.rows.map(({ id }) => id), ['a'])
@@ -151,7 +151,7 @@ test('detail loads all real form fields and defers writing until submit', async 
   assert.equal(page.render(), null)
   await page.respond(0, 200, company('a'))
   const form = find(page.render(), 'LogisticsForm').props
-  const { active: _active, mileage: _mileage, transferStatus: _transferStatus, createdAt: _createdAt, updatedAt: _updatedAt, ...fields } = company('a')
+  const { active: _active, mileage: _mileage, registeredMileage: _registeredMileage, additionalUnpaidMileage: _additionalUnpaidMileage, transferStatus: _transferStatus, createdAt: _createdAt, updatedAt: _updatedAt, ...fields } = company('a')
   assert.deepEqual(form.initialValues, { ...fields, bank: 'KB국민은행' })
   assert.equal(typeof form.save, 'function')
   assert.equal(page.calls[0].url, '/api/v1/admin/logistics-companies/a')

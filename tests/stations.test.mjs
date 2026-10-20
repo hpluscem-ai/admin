@@ -47,6 +47,8 @@ function mount(kind = 'list', id = 'a') {
   }
   const imports = { react, 'react/jsx-runtime': { jsx, jsxs: jsx } }
   const fetch = (url, options) => {
+    // Pole discovery is exercised separately from existing CRUD request ordering.
+    if (url === '/api/v1/admin/stations' && options.method === 'GET') return Promise.resolve(Response.json([]))
     const pending = Promise.withResolvers()
     calls.push({ url, options, ...pending })
     return pending.promise
@@ -65,7 +67,7 @@ function mount(kind = 'list', id = 'a') {
   imports['./utils/dateRange'] = imports['../utils/dateRange'] = load('utils/dateRange.ts')
   const api = load('stations.ts')
   imports['../stations'] = api
-  imports['../components/PageFilters'] = { SearchFilter: 'SearchFilter', DateRangeFilter: 'DateRangeFilter' }
+  imports['../components/PageFilters'] = { SearchFilter: 'SearchFilter', DateRangeFilter: 'DateRangeFilter', AffiliationFilter: 'AffiliationFilter' }
   for (const name of ['ConfirmationDialog', 'DataPageHeader', 'DataTable', 'InfrastructureForm']) imports[`../components/${name}`] = { [name]: name }
   imports['./FormControls'] = { PrimaryButton: 'PrimaryButton', TextField: 'TextField' }
   imports['../components/ConfirmationDialog'].NoticeDialog = 'NoticeDialog'
