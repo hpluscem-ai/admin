@@ -185,6 +185,10 @@ export function InfrastructureDataPage() {
   return (
     <section className="data-page infrastructure-data-page" aria-labelledby="infrastructure-data-title">
       <DataPageHeader title="인프라 데이터 목록" titleId="infrastructure-data-title"
+        floatingActions={<a className="floating-action" href="/infrastructure/new">
+          <img src={packageIcon} alt="" />
+          인프라 데이터 추가
+        </a>}
         onExport={async () => [
           ['주유소 이름', 'Pole', '모델명', '용량', '주소', '비고', '위도', '경도', '등록일자'],
           ...getRows(await getStations()).map(row => [row.station, row.pole, row.model || '-', row.capacity || '-',
@@ -212,10 +216,6 @@ export function InfrastructureDataPage() {
           if (loadError) setRefresh(current => current + 1)
           if (poleError) setPoleRefresh(current => current + 1)
         }} />}
-      <a className="floating-action" href="/infrastructure/new">
-        <img src={packageIcon} alt="" />
-        인프라 데이터 추가
-      </a>
       {deleteTarget ? (
         <ConfirmationDialog
           actionLabel="삭제"

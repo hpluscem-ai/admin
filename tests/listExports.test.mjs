@@ -12,7 +12,7 @@ function find(node, type) {
 }
 const driver = id => ({ id, logisticsCompanyId: id, logisticsCompanyName: id, name: id, phone: '01012345678', email: `${id}@example.test`, joinedAt: '2020-01-01', totalAmount: 200000, mileage: 3000 })
 const station = (id, pole) => ({ id, businessName: id, pole, roadAddress: '서울', note: null, latitude: 37.5, longitude: 127.1, createdAt: '2020-01-01', devices: [{ id: 'one', model: '모델', capacityLiters: 1000, active: true }] })
-const receipt = id => ({ id, reviewVersion: 'a'.repeat(64), settlementId: null, userId: id, logisticsCompanyId: id, logisticsCompanyName: id, name: id, phone: '01012345678', receiptAmount: 200000, meterAmount: 200000, finalAmount: 200000, liters: '100', mileageAmount: 3000, receiptAt: '2020-01-01', matchStatus: 'matched', ocrErrorCode: null, status: 'approved', rejectionReason: null, photos: { receipt: null, meter: null } })
+const receipt = id => ({ id, reviewVersion: 'a'.repeat(64), settlementId: null, userId: id, logisticsCompanyId: id, logisticsCompanyName: id, name: id, phone: '01012345678', receiptAmount: 200000, meterAmount: 200000, finalAmount: 200000, liters: '100', mileageAmount: 3000, receiptAt: '2020-01-01', matchStatus: 'matched', ocrErrorCode: null, status: 'approved', rejectionReason: null, photos: { receipt: `/api/v1/admin/mileage/applications/${id}/photos/receipt`, meter: `/api/v1/admin/mileage/applications/${id}/photos/meter` } })
 const company = month => ({ id: month, month, businessName: month, businessNumber: '00123', corporateRegistrationNumber: '456', businessAddress: '서울', managerName: '담당자', managerPhone: '01012345678', bankCode: '4', accountNumber: '001234567890', accountHolder: '예금주', active: true, mileage: 3000, registeredMileage: 3000, additionalUnpaidMileage: 0, transferStatus: 'pending' })
 const datasets = { drivers: [driver('visible'), driver('hidden')], stations: [station('visible', 'GS'), station('hidden', '농협')], 'mileage/applications': [receipt('visible'), receipt('hidden')], 'settlements/all': [company('2026-08'), company('2026-09')] }
 
@@ -78,15 +78,27 @@ test('Pole choices come from all stations and filter the displayed device rows o
   h.unmount()
 })
 
-test('settlement export reads every month without invoking bank export or mutating requests', async () => {
+test('receipt export excludes photo columns and URLs while keeping amounts aligned', async () => {
+  const h = mount('ReceiptDataPage')
+  await tick()
+  const rows = await find(h.render(), 'DataPageHeader').props.onExport()
+  assert.deepEqual(rows[0], ['소속', '이름', '연락처', '영수증 금액', '계기판 금액', '일치여부', '최종 금액', '주유량(L)', '적립 마일리지', '영수일시', '승인여부'])
+  for (const row of rows.slice(1)) {
+    assert.equal(row.length, rows[0].length)
+    assert.deepEqual(row.slice(3, 8), ['200,000', '200,000', '일치', '200,000', '100'])
+  }
+  assert.equal(rows.flat().some(value => value.includes('/photos/')), false)
+  h.unmount()
+})
+
+test('settlement has no list export and keeps its existing bank download', async () => {
   const h = mount('LogisticsSettlementPage')
   await tick()
   find(h.render(), 'SearchFilter').props.onChange('no match')
-  const rows = await find(h.render(), 'DataPageHeader').props.onExport()
-  assert.equal(h.calls.at(-1), 'settlements/all')
-  assert.deepEqual(rows.map(row => row[0]), ['정산 월', '2026-08', '2026-09'])
-  assert.equal(rows[1][5], '001234567890')
-  assert.equal(rows[1][6], 'KB국민은행')
+  const tree = h.render()
+  assert.equal(find(tree, 'DataPageHeader').props.onExport, undefined)
+  assert.equal(h.calls.includes('settlements/all'), false)
+  assert.equal(find(tree, 'button').props.children[1], '대량이체 엑셀 다운로드')
   assert.equal(h.calls.some(path => path.includes('/export')), false)
   h.unmount()
 })

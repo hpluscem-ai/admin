@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react'
 
 type DataPageHeaderProps = {
   children?: ReactNode
+  floatingActions?: ReactNode
   title: string
   titleId: string
   onExport?: () => Promise<readonly (readonly string[])[]>
@@ -9,7 +10,7 @@ type DataPageHeaderProps = {
 }
 
 /** 관리자 페이지가 공유하는 제목과 필터 영역을 표시한다. */
-export function DataPageHeader({ children, title, titleId, onExport, onExportError }: DataPageHeaderProps) {
+export function DataPageHeader({ children, floatingActions, title, titleId, onExport, onExportError }: DataPageHeaderProps) {
   const lifetime = useRef<object | null>(null)
   const exporting = useRef(false)
   useEffect(() => {
@@ -40,9 +41,12 @@ export function DataPageHeader({ children, title, titleId, onExport, onExportErr
       <h1 className="data-view__title" id={titleId}>
         {title}
       </h1>
-      {children || onExport ? <div className="data-view__filters">
+      {children ? <div className="data-view__filters">
         {children}
-        {onExport && <button className="floating-action data-view__export" onClick={handleExport} type="button">엑셀 저장</button>}
+      </div> : null}
+      {onExport || floatingActions ? <div className="floating-actions">
+        {onExport && <button className="floating-action" onClick={handleExport} type="button">엑셀 저장</button>}
+        {floatingActions}
       </div> : null}
     </header>
   )

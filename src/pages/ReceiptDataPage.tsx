@@ -220,9 +220,9 @@ export function ReceiptDataPage() {
     <section className="data-page receipt-data-page" aria-labelledby="receipt-data-title">
       <DataPageHeader title="영수 데이터 목록" titleId="receipt-data-title"
         onExport={async () => [
-          ['소속', '이름', '연락처', '영수증 사진', '영수증 금액', '계기판 사진', '계기판 금액', '일치여부', '최종 금액', '주유량(L)', '적립 마일리지', '영수일시', '승인여부'],
+          ['소속', '이름', '연락처', '영수증 금액', '계기판 금액', '일치여부', '최종 금액', '주유량(L)', '적립 마일리지', '영수일시', '승인여부'],
           ...(await getReceipts()).map(row => [row.logisticsCompanyName, row.name, row.phone ?? '-',
-            row.photos.receipt ?? '-', amount(row.receiptAmount), row.photos.meter ?? '-', amount(row.meterAmount),
+            amount(row.receiptAmount), amount(row.meterAmount),
             row.matchStatus === 'matched' ? '일치' : row.matchStatus === 'mismatched' ? '불일치'
               : row.matchStatus === 'ocr_failed' || row.matchStatus === 'duplicate_suspected' ? '0' : '-',
             amount(row.finalAmount), row.liters ?? '-', row.status === 'approved' ? amount(row.mileageAmount) : '0',

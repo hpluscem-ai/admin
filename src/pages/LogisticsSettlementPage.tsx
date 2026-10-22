@@ -2,7 +2,7 @@ import { navigate } from '../navigation'
 import { useEffect, useRef, useState } from 'react'
 import { AdminApiError, isInvalidAdminSession } from '../adminAuth'
 import { deactivateLogisticsCompany, LOGISTICS_LOAD_ERROR, type LogisticsCompany } from '../logisticsCompanies'
-import { getAllSettlements, getSettlements, downloadSettlements, uploadSettlements, settlementError, type SettlementCompany } from '../settlements'
+import { getSettlements, downloadSettlements, uploadSettlements, settlementError, type SettlementCompany } from '../settlements'
 import calendarIcon from '../assets/calendar.svg'
 import packageIcon from '../assets/package.svg'
 import { ConfirmationDialog, NoticeDialog } from '../components/ConfirmationDialog'
@@ -216,17 +216,7 @@ export function LogisticsSettlementPage() {
 
   return (
     <section className="data-page settlement-page" aria-labelledby="logistics-settlement-title">
-      <DataPageHeader title="물류사 정산 관리" titleId="logistics-settlement-title"
-        onExport={async () => [
-          ['정산 월', '사업자명', '사업자번호', '담당자명', '담당자연락처', '계좌번호', '은행', '예금주', '적립 마일리지', '이체 상태'],
-          ...(await getAllSettlements()).map(row => [row.month, row.businessName, row.businessNumber,
-            row.managerName, row.managerPhone, row.accountNumber, row.bank, row.accountHolder,
-            row.registeredMileage === row.mileage ? row.mileage.toLocaleString('ko-KR')
-              : `등록 ${row.registeredMileage.toLocaleString('ko-KR')}\n이체 대상 ${row.mileage.toLocaleString('ko-KR')}`,
-            (row.transferStatus === 'completed' ? '이체완료' : row.transferStatus === 'pending' ? '이체대기' : '-')
-              + (row.additionalUnpaidMileage > 0 ? `\n추가 미지급 ${row.additionalUnpaidMileage.toLocaleString('ko-KR')}` : '')]),
-        ]}
-        onExportError={error => { if (isInvalidAdminSession(error)) navigate('/login'); else setLoadError(LOGISTICS_LOAD_ERROR) }}>
+      <DataPageHeader title="물류사 정산 관리" titleId="logistics-settlement-title">
         <SearchFilter
           label="사업자명 검색"
           onChange={setBusinessNameQuery}
@@ -248,7 +238,7 @@ export function LogisticsSettlementPage() {
         onRetry={fileError ? undefined : () => setRefresh(current => current + 1)}
       />}
 
-      <div className="settlement-floating-actions">
+      <div className="floating-actions">
         <label className="floating-action">
           <input accept=".xlsx,.xls" className="sr-only" type="file" disabled={fileBusy} onChange={(event) => {
             const file = event.currentTarget.files?.[0]
