@@ -128,22 +128,24 @@ test('receipt data uses admin cookies and shows pending or rejected mileage as z
   assert.equal(columns.find((column) => column.key === 'mileage').render(row('a')), '0')
   assert.equal(columns.find((column) => column.key === 'mileage').render({ ...row('a'), status: 'rejected' }), '0')
   const match = columns.find((column) => column.key === 'match').render(row('a'))
-  assert.equal(match.props.children, '-')
-  assert.equal(match.props['data-match'], undefined)
+  assert.equal(match.props.children, '불일치')
+  assert.equal(match.props['data-match'], false)
   assert.equal(columns.find((column) => column.key === 'mileage').render({ ...row('a'), mileageAmount: 0 }), '0')
   assert.equal(columns.find((column) => column.key === 'finalAmount').render({ ...row('a'), finalAmount: 12345 }), '12,345')
 })
 
-test('OCR failure and duplicate suspicion need review without changing other match results', () => {
+test('only matched receipts display a match and no match status exposes a reason action', () => {
   const page = mount()
   const column = page.table().columns.find(column => column.key === 'match')
   for (const [matchStatus, expected, dataMatch] of [
-    ['pending', '-', undefined], ['matched', '일치', true], ['mismatched', '불일치', false],
-    ['ocr_failed', '확인 필요', undefined], ['duplicate_suspected', '확인 필요', undefined],
+    ['pending', '불일치', false], ['matched', '일치', true], ['mismatched', '불일치', false],
+    ['ocr_failed', '불일치', false], ['duplicate_suspected', '불일치', false],
   ]) {
-    const result = find(column.render({ ...row('a'), matchStatus }), 'span', node => node.props.className === 'match-result')
+    const cell = column.render({ ...row('a'), matchStatus })
+    const result = find(cell, 'span', node => node.props.className === 'match-result')
     assert.equal(result.props.children, expected)
     assert.equal(result.props['data-match'], dataMatch)
+    assert.equal(find(cell, 'button'), undefined)
   }
 })
 
@@ -151,42 +153,6 @@ function reasonButton(page, receipt) {
   return find(page.table().columns.find(column => column.key === 'status').render(receipt),
     'button', node => node.props.children === '사유 보기')
 }
-
-function matchReasonButton(page, receipt) {
-  return find(page.table().columns.find(column => column.key === 'match').render(receipt),
-    'button', node => node.props.children === '사유 보기')
-}
-
-test('match reasons distinguish OCR failures and duplicate suspicion without requests', async () => {
-  const page = mount()
-  const failed = { ...row('a'), matchStatus: 'ocr_failed', ocrErrorCode: 'LUNA_HTTP' }
-  await page.respond(0, 200, [failed])
-  for (const receipt of [failed, { ...failed, ocrErrorCode: null }, { ...failed, matchStatus: 'duplicate_suspected' }]) {
-    matchReasonButton(page, receipt).props.onClick()
-    const dialog = find(page.render(), 'NoticeDialog')
-    assert.ok(dialog)
-    if (receipt.matchStatus === 'ocr_failed') {
-      const text = dialog.props.message.props.children.filter(child => typeof child === 'string').join('')
-      assert.match(text, /^OCR 실패/)
-      assert.match(text, new RegExp(receipt.ocrErrorCode ?? '기록 없음'))
-      assert.match(text, /상세 HTTP 원인: 기존 기록 없음/)
-      assert.ok(find(dialog.props.message, 'br'))
-    } else {
-      assert.equal(dialog.props.message, '중복 의심')
-    }
-    assert.equal(page.calls.length, 1)
-    assert.equal(page.modal(), undefined)
-    assert.equal(matchReasonButton(page, receipt).props.disabled, true)
-    dialog.props.onClose()
-    assert.equal(find(page.render(), 'NoticeDialog'), undefined)
-  }
-  for (const matchStatus of ['pending', 'matched', 'mismatched']) {
-    assert.equal(matchReasonButton(page, { ...failed, matchStatus }), undefined)
-  }
-  matchReasonButton(page, failed).props.onClick()
-  page.change('SearchFilter', '다른 기사')
-  assert.equal(find(page.render(), 'NoticeDialog'), undefined)
-})
 
 test('OCR error codes are validated and absent fields remain compatible with older servers', async () => {
   for (const code of ['LUNA_HTTP', null, undefined]) {
