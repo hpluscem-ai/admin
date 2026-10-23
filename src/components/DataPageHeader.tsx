@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react'
+import packageIcon from '../assets/package.svg'
 
 type DataPageHeaderProps = {
   children?: ReactNode
@@ -45,7 +46,10 @@ export function DataPageHeader({ children, floatingActions, title, titleId, onEx
         {children}
       </div> : null}
       {onExport || floatingActions ? <div className="floating-actions">
-        {onExport && <button className="floating-action" onClick={handleExport} type="button">엑셀 저장</button>}
+        {onExport && <button className="floating-action" onClick={handleExport} type="button">
+          <img src={packageIcon} alt="" />
+          엑셀 다운로드
+        </button>}
         {floatingActions}
       </div> : null}
     </header>
