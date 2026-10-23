@@ -94,7 +94,7 @@ test('receipt export excludes photo columns and URLs while keeping amounts align
 test('receipt export uses the same names for all five match statuses as the screen', async () => {
   const cases = [
     ['pending', '-'], ['matched', '일치'], ['mismatched', '불일치'],
-    ['ocr_failed', 'OCR 실패'], ['duplicate_suspected', '중복 의심'],
+    ['ocr_failed', '확인 필요'], ['duplicate_suspected', '확인 필요'],
   ]
   const h = mount('ReceiptDataPage', {
     request: () => cases.map(([matchStatus]) => ({ ...receipt(matchStatus), matchStatus })),

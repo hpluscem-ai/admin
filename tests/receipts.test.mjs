@@ -134,12 +134,12 @@ test('receipt data uses admin cookies and shows pending or rejected mileage as z
   assert.equal(columns.find((column) => column.key === 'finalAmount').render({ ...row('a'), finalAmount: 12345 }), '12,345')
 })
 
-test('OCR failure and duplicate suspicion display their names without changing other match results', () => {
+test('OCR failure and duplicate suspicion need review without changing other match results', () => {
   const page = mount()
   const column = page.table().columns.find(column => column.key === 'match')
   for (const [matchStatus, expected, dataMatch] of [
     ['pending', '-', undefined], ['matched', '일치', true], ['mismatched', '불일치', false],
-    ['ocr_failed', 'OCR 실패', undefined], ['duplicate_suspected', '중복 의심', undefined],
+    ['ocr_failed', '확인 필요', undefined], ['duplicate_suspected', '확인 필요', undefined],
   ]) {
     const result = find(column.render({ ...row('a'), matchStatus }), 'span', node => node.props.className === 'match-result')
     assert.equal(result.props.children, expected)
@@ -152,33 +152,38 @@ function reasonButton(page, receipt) {
     'button', node => node.props.children === '사유 보기')
 }
 
-function ocrReasonButton(page, receipt) {
+function matchReasonButton(page, receipt) {
   return find(page.table().columns.find(column => column.key === 'match').render(receipt),
-    'button', node => node.props.children === 'OCR 사유 보기')
+    'button', node => node.props.children === '사유 보기')
 }
 
-test('OCR reasons use the existing notice without requests and preserve unknown codes', async () => {
+test('match reasons distinguish OCR failures and duplicate suspicion without requests', async () => {
   const page = mount()
   const failed = { ...row('a'), matchStatus: 'ocr_failed', ocrErrorCode: 'LUNA_HTTP' }
   await page.respond(0, 200, [failed])
-  for (const receipt of [failed, { ...failed, ocrErrorCode: null }]) {
-    ocrReasonButton(page, receipt).props.onClick()
+  for (const receipt of [failed, { ...failed, ocrErrorCode: null }, { ...failed, matchStatus: 'duplicate_suspected' }]) {
+    matchReasonButton(page, receipt).props.onClick()
     const dialog = find(page.render(), 'NoticeDialog')
     assert.ok(dialog)
-    const text = dialog.props.message.props.children.filter(child => typeof child === 'string').join('')
-    assert.match(text, new RegExp(receipt.ocrErrorCode ?? '기록 없음'))
-    assert.match(text, /상세 HTTP 원인: 기존 기록 없음/)
-    assert.ok(find(dialog.props.message, 'br'))
+    if (receipt.matchStatus === 'ocr_failed') {
+      const text = dialog.props.message.props.children.filter(child => typeof child === 'string').join('')
+      assert.match(text, /^OCR 실패/)
+      assert.match(text, new RegExp(receipt.ocrErrorCode ?? '기록 없음'))
+      assert.match(text, /상세 HTTP 원인: 기존 기록 없음/)
+      assert.ok(find(dialog.props.message, 'br'))
+    } else {
+      assert.equal(dialog.props.message, '중복 의심')
+    }
     assert.equal(page.calls.length, 1)
     assert.equal(page.modal(), undefined)
-    assert.equal(ocrReasonButton(page, failed).props.disabled, true)
+    assert.equal(matchReasonButton(page, receipt).props.disabled, true)
     dialog.props.onClose()
     assert.equal(find(page.render(), 'NoticeDialog'), undefined)
   }
-  for (const matchStatus of ['pending', 'matched', 'mismatched', 'duplicate_suspected']) {
-    assert.equal(ocrReasonButton(page, { ...failed, matchStatus }), undefined)
+  for (const matchStatus of ['pending', 'matched', 'mismatched']) {
+    assert.equal(matchReasonButton(page, { ...failed, matchStatus }), undefined)
   }
-  ocrReasonButton(page, failed).props.onClick()
+  matchReasonButton(page, failed).props.onClick()
   page.change('SearchFilter', '다른 기사')
   assert.equal(find(page.render(), 'NoticeDialog'), undefined)
 })

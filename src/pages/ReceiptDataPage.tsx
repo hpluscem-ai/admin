@@ -63,17 +63,18 @@ function getColumns(onPhoto: (target: PhotoTarget) => void, onReview: (target: R
     { key: 'receiptAmount', label: '영수증 금액', render: (row) => amount(row.receiptAmount) },
     { key: 'meterPhoto', label: '계기판 사진', render: (row) => photoButton(row, 'meter') },
     { key: 'meterAmount', label: '계기판 금액', render: (row) => amount(row.meterAmount) },
-    { key: 'match', label: '일치여부', render: (row) => row.matchStatus === 'ocr_failed'
+    { key: 'match', label: '일치여부', render: (row) => row.matchStatus === 'ocr_failed' || row.matchStatus === 'duplicate_suspected'
       ? <span className="receipt-review-status">
-        <span className="match-result">OCR 실패</span>
+        <span className="match-result">확인 필요</span>
         <button className="text-button" type="button" disabled={reviewDisabled}
-          aria-label={`${row.name} OCR 사유 보기`}
-          onClick={() => onReason(<>
+          aria-label={`${row.name} 일치여부 사유 보기`}
+          onClick={() => onReason(row.matchStatus === 'ocr_failed' ? <>
+            OCR 실패<br />
             오류 코드: {row.ocrErrorCode ?? '기록 없음'}<br />
             상세 HTTP 원인: 기존 기록 없음
-          </>)}>OCR 사유 보기</button>
+          </> : '중복 의심')}>사유 보기</button>
       </span>
-      : <span className="match-result" data-match={row.matchStatus === 'matched' ? true : row.matchStatus === 'mismatched' ? false : undefined}>{row.matchStatus === 'matched' ? '일치' : row.matchStatus === 'mismatched' ? '불일치' : row.matchStatus === 'duplicate_suspected' ? '중복 의심' : '-'}</span> },
+      : <span className="match-result" data-match={row.matchStatus === 'matched' ? true : row.matchStatus === 'mismatched' ? false : undefined}>{row.matchStatus === 'matched' ? '일치' : row.matchStatus === 'mismatched' ? '불일치' : '-'}</span> },
     { key: 'finalAmount', label: '최종 금액', render: (row) => amount(row.finalAmount) },
     { key: 'liters', label: '주유량(L)', render: (row) => row.liters ?? '-' },
     { key: 'mileage', label: '적립 마일리지', render: (row) => row.status === 'approved' ? amount(row.mileageAmount) : '0' },
@@ -224,7 +225,7 @@ export function ReceiptDataPage() {
           ...(await getReceipts()).map(row => [row.logisticsCompanyName, row.name, row.phone ?? '-',
             amount(row.receiptAmount), amount(row.meterAmount),
             row.matchStatus === 'matched' ? '일치' : row.matchStatus === 'mismatched' ? '불일치'
-              : row.matchStatus === 'ocr_failed' ? 'OCR 실패' : row.matchStatus === 'duplicate_suspected' ? '중복 의심' : '-',
+              : row.matchStatus === 'ocr_failed' || row.matchStatus === 'duplicate_suspected' ? '확인 필요' : '-',
             amount(row.finalAmount), row.liters ?? '-', row.status === 'approved' ? amount(row.mileageAmount) : '0',
             receiptDate(row.receiptAt), statusNames[row.status]]),
         ]}
