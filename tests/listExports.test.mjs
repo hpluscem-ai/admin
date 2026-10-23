@@ -91,6 +91,21 @@ test('receipt export excludes photo columns and URLs while keeping amounts align
   h.unmount()
 })
 
+test('receipt export uses the same names for all five match statuses as the screen', async () => {
+  const cases = [
+    ['pending', '-'], ['matched', '일치'], ['mismatched', '불일치'],
+    ['ocr_failed', 'OCR 실패'], ['duplicate_suspected', '중복 의심'],
+  ]
+  const h = mount('ReceiptDataPage', {
+    request: () => cases.map(([matchStatus]) => ({ ...receipt(matchStatus), matchStatus })),
+  })
+  await tick()
+  const rows = await find(h.render(), 'DataPageHeader').props.onExport()
+  const column = rows[0].indexOf('일치여부')
+  assert.deepEqual(rows.slice(1).map(row => row[column]), cases.map(([, label]) => label))
+  h.unmount()
+})
+
 test('settlement has no list export and keeps its existing bank download', async () => {
   const h = mount('LogisticsSettlementPage')
   await tick()

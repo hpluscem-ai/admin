@@ -134,12 +134,12 @@ test('receipt data uses admin cookies and shows pending or rejected mileage as z
   assert.equal(columns.find((column) => column.key === 'finalAmount').render({ ...row('a'), finalAmount: 12345 }), '12,345')
 })
 
-test('OCR failure and duplicate suspicion display zero without changing other match results', () => {
+test('OCR failure and duplicate suspicion display their names without changing other match results', () => {
   const page = mount()
   const column = page.table().columns.find(column => column.key === 'match')
   for (const [matchStatus, expected, dataMatch] of [
     ['pending', '-', undefined], ['matched', '일치', true], ['mismatched', '불일치', false],
-    ['ocr_failed', '0', undefined], ['duplicate_suspected', '0', undefined],
+    ['ocr_failed', 'OCR 실패', undefined], ['duplicate_suspected', '중복 의심', undefined],
   ]) {
     const result = find(column.render({ ...row('a'), matchStatus }), 'span', node => node.props.className === 'match-result')
     assert.equal(result.props.children, expected)

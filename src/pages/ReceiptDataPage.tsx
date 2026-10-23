@@ -65,7 +65,7 @@ function getColumns(onPhoto: (target: PhotoTarget) => void, onReview: (target: R
     { key: 'meterAmount', label: '계기판 금액', render: (row) => amount(row.meterAmount) },
     { key: 'match', label: '일치여부', render: (row) => row.matchStatus === 'ocr_failed'
       ? <span className="receipt-review-status">
-        <span className="match-result">0</span>
+        <span className="match-result">OCR 실패</span>
         <button className="text-button" type="button" disabled={reviewDisabled}
           aria-label={`${row.name} OCR 사유 보기`}
           onClick={() => onReason(<>
@@ -73,7 +73,7 @@ function getColumns(onPhoto: (target: PhotoTarget) => void, onReview: (target: R
             상세 HTTP 원인: 기존 기록 없음
           </>)}>OCR 사유 보기</button>
       </span>
-      : <span className="match-result" data-match={row.matchStatus === 'matched' ? true : row.matchStatus === 'mismatched' ? false : undefined}>{row.matchStatus === 'matched' ? '일치' : row.matchStatus === 'mismatched' ? '불일치' : row.matchStatus === 'duplicate_suspected' ? '0' : '-'}</span> },
+      : <span className="match-result" data-match={row.matchStatus === 'matched' ? true : row.matchStatus === 'mismatched' ? false : undefined}>{row.matchStatus === 'matched' ? '일치' : row.matchStatus === 'mismatched' ? '불일치' : row.matchStatus === 'duplicate_suspected' ? '중복 의심' : '-'}</span> },
     { key: 'finalAmount', label: '최종 금액', render: (row) => amount(row.finalAmount) },
     { key: 'liters', label: '주유량(L)', render: (row) => row.liters ?? '-' },
     { key: 'mileage', label: '적립 마일리지', render: (row) => row.status === 'approved' ? amount(row.mileageAmount) : '0' },
@@ -224,7 +224,7 @@ export function ReceiptDataPage() {
           ...(await getReceipts()).map(row => [row.logisticsCompanyName, row.name, row.phone ?? '-',
             amount(row.receiptAmount), amount(row.meterAmount),
             row.matchStatus === 'matched' ? '일치' : row.matchStatus === 'mismatched' ? '불일치'
-              : row.matchStatus === 'ocr_failed' || row.matchStatus === 'duplicate_suspected' ? '0' : '-',
+              : row.matchStatus === 'ocr_failed' ? 'OCR 실패' : row.matchStatus === 'duplicate_suspected' ? '중복 의심' : '-',
             amount(row.finalAmount), row.liters ?? '-', row.status === 'approved' ? amount(row.mileageAmount) : '0',
             receiptDate(row.receiptAt), statusNames[row.status]]),
         ]}
